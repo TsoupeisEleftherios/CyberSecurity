@@ -1,0 +1,127 @@
+import nmap
+import requests
+from bs4 import BeautifulSoup
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+import metasploit.msfrpc as msfrpc
+from flask import Flask, render_template, jsonify
+
+# Flask app for dashboard
+app = Flask(__name__)
+
+# Store results to visualize in the dashboard
+scan_results = []
+
+### Network Scanning using Nmap
+def network_scan(target):
+    nm = nmap.PortScanner()
+    nm.scan(hosts=target, arguments='-sV')  # Scan with service detection
+    result = {}
+    for host in nm.all_hosts():
+        result[host] = nm[host]
+    scan_results.append({'type': 'network', 'data': result})
+    return result
+
+### Web Vulnerability Scanner with multiple payloads
+def check_sql_injection(url):
+    payloads = ["' OR '1'='1", "' UNION SELECT null--", "' OR 1=1 --"]
+    vulnerable = False
+    for payload in payloads:
+        try:
+            response = requests.get(f"{url}?id={payload}")
+            if "error" in response.text or "syntax" in response.text:
+                vulnerable = True
+                break
+        except Exception as e:
+            print(f"Error checking SQL Injection: {e}")
+    return vulnerable
+
+def check_xss(url):
+    xss_payloads = ["<script>alert('xss')</script>", "<img src=x onerror=alert('xss')>"]
+    vulnerable = False
+    for payload in xss_payloads:
+        try:
+            response = requests.get(url, params={"input": payload})
+            if payload in response.text:
+                vulnerable = True
+                break
+        except Exception as e:
+            print(f"Error checking XSS: {e}")
+    return vulnerable
+
+def check_lfi(url):
+    lfi_payloads = ["../../../../etc/passwd", "../../../../windows/system32/drivers/etc/hosts"]
+    vulnerable = False
+    for payload in lfi_payloads:
+        try:
+            response = requests.get(f"{url}?file={payload}")
+            if "root:x" in response.text or "localhost" in response.text:
+                vulnerable = True
+                break
+        except Exception as e:
+            print(f"Error checking LFI: {e}")
+    return vulnerable
+
+def run_web_scan(target_url):
+    vulnerabilities = {
+        'SQL Injection': check_sql_injection(target_url),
+        'Cross-Site Scripting (XSS)': check_xss(target_url),
+        'Local File Inclusion (LFI)': check_lfi(target_url)
+    }
+    scan_results.append({'type': 'web', 'url': target_url, 'vulnerabilities': vulnerabilities})
+    return vulnerabilities
+
+### Exploitation (Metasploit integration)
+def run_metasploit_attack(target_ip):
+    client = msfrpc.Msfrpc({})
+    client.login('msf', 'password')  # Set correct username/password
+
+    # Example: Exploit a known vulnerability
+    exploit = client.call('module.execute', ['exploit', 'exploit_name', {'RHOST': target_ip}])
+    
+    scan_results.append({'type': 'exploitation', 'target': target_ip, 'exploit_job_id': exploit['job_id']})
+    return exploit['job_id']
+
+### Report Generation (PDF with CVSS scoring)
+def generate_report(vulnerabilities, filename='report.pdf'):
+    c = canvas.Canvas(filename, pagesize=letter)
+    width, height = letter
+
+    c.drawString(100, height - 50, "Vulnerability Assessment Report")
+    y_position = height - 100
+    
+    for vuln_type, status in vulnerabilities.items():
+        c.drawString(100, y_position, f"{vuln_type} - Vulnerable: {status}")
+        y_position -= 20
+
+    c.save()
+
+### Dashboard
+@app.route('/')
+def dashboard():
+    return render_template('dashboard.html', scan_results=scan_results)
+
+@app.route('/run_scan/<target>')
+def run_full_scan(target):
+    # Run network scan
+    network_data = network_scan(target)
+
+    # Run web vulnerability scan
+    web_vulnerabilities = run_web_scan(f"http://{target}")
+
+    # Run exploitation (optional step)
+    exploit_job_id = run_metasploit_attack(target)
+
+    # Generate report (optional)
+    generate_report(web_vulnerabilities)
+
+    return jsonify({
+        'network_data': network_data,
+        'web_vulnerabilities': web_vulnerabilities,
+        'exploit_job_id': exploit_job_id
+    })
+
+# Run the Flask app (Dashboard)
+if __name__ == '__main__':
+    app.run(debug=True)
+
