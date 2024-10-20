@@ -1,0 +1,71 @@
+import requests
+import os
+
+# File path for vulnerability report
+desktop_path = os.path.join(os.path.expanduser("~"), "Desktop", "vulnerability_report.txt")
+
+def load_vulnerabilities():
+    """Load vulnerabilities from the vulnerability report."""
+    vulnerabilities = {}
+    try:
+        with open(desktop_path, "r") as f:
+            lines = f.readlines()
+            current_vulnerability = None
+            for line in lines:
+                line = line.strip()
+                if line.startswith("SQL Injection Payloads:"):
+                    current_vulnerability = "SQL Injection"
+                elif line.startswith("XSS Payloads:"):
+                    current_vulnerability = "XSS"
+                elif line.startswith("LFI Payloads:"):
+                    current_vulnerability = "LFI"
+                elif current_vulnerability and line.startswith("- "):
+                    if current_vulnerability not in vulnerabilities:
+                        vulnerabilities[current_vulnerability] = []
+                    vulnerabilities[current_vulnerability].append(line[2:])
+    except FileNotFoundError:
+        print("Vulnerability report not found.")
+    return vulnerabilities
+
+def check_modification_possible(vulnerabilities, parameter, new_value):
+    """Check if the modification is possible based on vulnerabilities."""
+    if 'SQL Injection' in vulnerabilities:
+        for payload in vulnerabilities['SQL Injection']:
+            if parameter in payload:  # Check if the parameter can be altered
+                print(f"Modification possible via SQL Injection: {payload} -> {parameter}={new_value}")
+                return True
+
+    if 'Local File Inclusion (LFI)' in vulnerabilities:
+        for payload in vulnerabilities['Local File Inclusion (LFI)']:
+            if parameter in payload:  # Check if the parameter can be altered
+                print(f"Modification possible via LFI: {payload} -> {parameter}={new_value}")
+                return True
+
+    if 'XSS' in vulnerabilities:
+        print(f"Modification possible via XSS: You can inject <script> or other payloads in {parameter} with value {new_value}.")
+        return True
+
+    return False
+
+def main():
+    print("Loading vulnerabilities from report...")
+    vulnerabilities = load_vulnerabilities()
+
+    if not vulnerabilities:
+        print("No vulnerabilities found in the report.")
+        return
+
+    print("\nFound the following vulnerabilities:")
+    for vuln in vulnerabilities:
+        print(f"- {vuln}: {vulnerabilities[vuln]}")
+
+    parameter = input("\nEnter the parameter you want to change: ")
+    new_value = input("Enter the new value for the parameter: ")
+
+    if check_modification_possible(vulnerabilities, parameter, new_value):
+        print(f"\nModification of {parameter} to {new_value} is possible with the found vulnerabilities.")
+    else:
+        print(f"\nModification of {parameter} to {new_value} is NOT possible with the found vulnerabilities.")
+
+if __name__ == '__main__':
+    main()
