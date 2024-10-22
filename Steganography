@@ -1,0 +1,92 @@
+import os
+from PIL import Image
+
+def text_to_bin(text):
+    """Convert text to binary string."""
+    return ''.join(format(ord(char), '08b') for char in text)
+
+def bin_to_text(binary):
+    """Convert binary string to text."""
+    chars = [binary[i:i + 8] for i in range(0, len(binary), 8)]
+    return ''.join(chr(int(char, 2)) for char in chars)
+
+def encode_image(image_path, message, output_folder):
+    """Hide a message in an image."""
+    # Open the image
+    image = Image.open(image_path)
+    encoded_image = image.copy()
+
+    # Convert message to binary and add delimiter
+    message += '|||'
+    binary_message = text_to_bin(message)
+
+    # Ensure the message can fit in the image
+    width, height = encoded_image.size
+    max_capacity = width * height * 3  # 3 channels (RGB)
+    if len(binary_message) > max_capacity:
+        raise ValueError("Message is too long to be encoded in the image.")
+
+    # Encode the binary message into the image
+    data_index = 0
+    for y in range(height):
+        for x in range(width):
+            pixel = list(encoded_image.getpixel((x, y)))
+            for color in range(3):  # Modify R, G, B channels
+                if data_index < len(binary_message):
+                    # Set the LSB of the pixel to the next bit of the message
+                    pixel[color] = (pixel[color] & ~1) | int(binary_message[data_index])
+                    data_index += 1
+            encoded_image.putpixel((x, y), tuple(pixel))
+            if data_index >= len(binary_message):
+                break
+        if data_index >= len(binary_message):
+            break
+
+    # Construct output filename
+    base_name = os.path.basename(image_path)
+    name, ext = os.path.splitext(base_name)
+    output_filename = f"{name}_encrypted{ext}"
+
+    # Full output path
+    output_path = os.path.join(output_folder, output_filename)
+
+    # Save the modified image
+    encoded_image.save(output_path)
+    print(f"Message encoded in {output_path} successfully.")
+
+def decode_image(image_path):
+    """Extract a hidden message from an image."""
+    image = Image.open(image_path)
+    binary_message = ""
+
+    width, height = image.size
+    for y in range(height):
+        for x in range(width):
+            pixel = image.getpixel((x, y))
+            for color in range(3):  # Get R, G, B channels
+                binary_message += str(pixel[color] & 1)  # Extract LSB
+
+    # Convert binary string to text
+    decoded_message = bin_to_text(binary_message)
+
+    # Check for the delimiter to get the actual message
+    if '|||' in decoded_message:
+        actual_message = decoded_message.split('|||')[0]
+        return actual_message
+    else:
+        return "No hidden message found."
+
+# Example usage
+if __name__ == "__main__":
+    choice = input("Enter 'e' to encode a message or 'd' to decode a message: ")
+
+    if choice == 'e':
+        image_path = input("Enter the path to the image: ")
+        message = input("Enter the message to hide: ")
+        output_folder = input("Enter the folder to save the encoded image: ")
+        encode_image(image_path, message, output_folder)
+
+    elif choice == 'd':
+        image_path = input("Enter the path to the image to decode: ")
+        hidden_message = decode_image(image_path)
+        print("Hidden message:", hidden_message)
