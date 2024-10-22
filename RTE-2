@@ -3,12 +3,10 @@ import string
 import hashlib
 import time
 
-
 def generate_hash(message):
     """Generate a hash of the original message using SHA-256."""
     hash_object = hashlib.sha256(message.encode())
     return hash_object.hexdigest()
-
 
 def encrypt(message):
     """Encrypt the message using a complex algorithm."""
@@ -24,7 +22,7 @@ def encrypt(message):
 
     # Encrypt the message
     encrypted_message = ''
-    positions = []  # Track positions of random characters
+    random_chars = []  # Store random characters to remove them later
 
     for char in message:
         if char.isalpha():
@@ -40,15 +38,12 @@ def encrypt(message):
     num_random_chars = random.randint(1, len(encrypted_message) // 2)  # Random number of characters to add
     for _ in range(num_random_chars):
         random_char = random.choice(string.ascii_letters + string.digits + string.punctuation)
-        pos = random.randint(0, len(encrypted_message))
-        encrypted_message = encrypted_message[:pos] + random_char + encrypted_message[pos:]
-        positions.append(pos)  # Track the position
+        encrypted_message += random_char  # Add random characters to the end
 
-    # Append the hash value to the encrypted message
-    encrypted_message += hash_value  # Append directly without a delimiter
+    # Append the hash value to the encrypted message without a delimiter
+    encrypted_message += hash_value
 
-    return encrypted_message.replace(' ', ''), hash_value, positions  # Return positions for decryption
-
+    return encrypted_message.replace(' ', ''), hash_value  # Return the encrypted message
 
 def decrypt(encrypted_message, hash_value):
     """Decrypt the message by reversing the encryption process."""
@@ -67,6 +62,7 @@ def decrypt(encrypted_message, hash_value):
     # Decrypt the message
     decrypted_message = ''
 
+    # Decrypt the message, excluding the random characters
     for char in message_part:
         if char.isalpha():
             if char.islower():
@@ -77,8 +73,10 @@ def decrypt(encrypted_message, hash_value):
         else:
             decrypted_message += char  # Keep non-alphabetic characters
 
-    return decrypted_message  # Return the decrypted message
+    # Clean the decrypted message by removing any extraneous characters
+    decrypted_message = ''.join(filter(str.isalpha, decrypted_message))
 
+    return decrypted_message  # Return the decrypted message
 
 # Example usage
 if __name__ == "__main__":
@@ -86,7 +84,7 @@ if __name__ == "__main__":
 
     if action == 'e':
         message = input("Enter a message to encrypt: ")
-        encrypted_message, hash_value, positions = encrypt(message)
+        encrypted_message, hash_value = encrypt(message)
         print("Hash of the original message:", hash_value)
         print("Encrypted message:", encrypted_message)
 
