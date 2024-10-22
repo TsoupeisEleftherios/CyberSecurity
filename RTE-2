@@ -1,0 +1,98 @@
+import random
+import string
+import hashlib
+import time
+
+
+def generate_hash(message):
+    """Generate a hash of the original message using SHA-256."""
+    hash_object = hashlib.sha256(message.encode())
+    return hash_object.hexdigest()
+
+
+def encrypt(message):
+    """Encrypt the message using a complex algorithm."""
+    # Generate the hash for the original message
+    hash_value = generate_hash(message)
+
+    # Calculate a shift value based on the hash
+    shift_value = sum(ord(c) for c in hash_value) % 26  # Shift based on the hash characters
+
+    # Get current time for randomness
+    current_time = time.time()
+    random.seed(current_time)  # Seed random number generator with current time
+
+    # Encrypt the message
+    encrypted_message = ''
+    positions = []  # Track positions of random characters
+
+    for char in message:
+        if char.isalpha():
+            if char.islower():
+                shift = (ord(char) - ord('a') + shift_value) % 26 + ord('a')
+            else:
+                shift = (ord(char) - ord('A') + shift_value) % 26 + ord('A')
+            encrypted_message += chr(shift)
+        else:
+            encrypted_message += char  # Non-alphabetic characters are unchanged
+
+    # Add random characters into the encrypted message for obfuscation
+    num_random_chars = random.randint(1, len(encrypted_message) // 2)  # Random number of characters to add
+    for _ in range(num_random_chars):
+        random_char = random.choice(string.ascii_letters + string.digits + string.punctuation)
+        pos = random.randint(0, len(encrypted_message))
+        encrypted_message = encrypted_message[:pos] + random_char + encrypted_message[pos:]
+        positions.append(pos)  # Track the position
+
+    # Append the hash value to the encrypted message
+    encrypted_message += hash_value  # Append directly without a delimiter
+
+    return encrypted_message.replace(' ', ''), hash_value, positions  # Return positions for decryption
+
+
+def decrypt(encrypted_message, hash_value):
+    """Decrypt the message by reversing the encryption process."""
+    # Extract the hash from the encrypted message
+    extracted_hash = encrypted_message[-64:]  # SHA-256 produces a 64 character hash
+    message_part = encrypted_message[:-64]  # Extract the actual encrypted message
+
+    # Verify the hash
+    if extracted_hash != hash_value:
+        print("Hash mismatch! Decryption failed.")
+        return None
+
+    # Calculate the shift value based on the hash
+    shift_value = sum(ord(c) for c in hash_value) % 26  # Recompute the shift value
+
+    # Decrypt the message
+    decrypted_message = ''
+
+    for char in message_part:
+        if char.isalpha():
+            if char.islower():
+                shift = (ord(char) - ord('a') - shift_value) % 26 + ord('a')
+            else:
+                shift = (ord(char) - ord('A') - shift_value) % 26 + ord('A')
+            decrypted_message += chr(shift)
+        else:
+            decrypted_message += char  # Keep non-alphabetic characters
+
+    return decrypted_message  # Return the decrypted message
+
+
+# Example usage
+if __name__ == "__main__":
+    action = input("Do you want to encrypt or decrypt a message? (e/d): ").strip().lower()
+
+    if action == 'e':
+        message = input("Enter a message to encrypt: ")
+        encrypted_message, hash_value, positions = encrypt(message)
+        print("Hash of the original message:", hash_value)
+        print("Encrypted message:", encrypted_message)
+
+    elif action == 'd':
+        encrypted_message = input("Enter the encrypted message: ")
+        hash_value = input("Enter the hash of the original message: ")
+        decrypted_message = decrypt(encrypted_message, hash_value)
+        if decrypted_message:
+            print("Decrypted message:", decrypted_message)
