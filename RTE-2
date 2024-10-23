@@ -1,7 +1,7 @@
 import random
 import string
 import hashlib
-import time
+import time  # Import the time module to access timestamps
 
 
 def generate_hash(message):
@@ -10,10 +10,21 @@ def generate_hash(message):
     return hash_object.hexdigest()
 
 
+def generate_space_replacement():
+    """Return a unique character for space replacement."""
+    # Choose a character that is unlikely to be in the original message
+    return '␣'  # Using a special Unicode character
+
+
+def generate_random_digit():
+    """Generate a random digit as a string."""
+    return str(random.randint(0, 9))
+
+
 def encrypt(message):
     """Encrypt the message using a complex algorithm."""
     # Get the current timestamp
-    timestamp = str(int(time.time()))
+    timestamp = str(int(time.time()))  # Current time in seconds since epoch
 
     # Seed the random number generator with the current timestamp
     random.seed(timestamp)
@@ -33,10 +44,18 @@ def encrypt(message):
             else:
                 shift = (ord(char) - ord('A') + shift_value) % 26 + ord('A')
             encrypted_message += chr(shift)
+        elif char.isdigit():
+            # Shift digits (0-9)
+            shift = (ord(char) - ord('0') + shift_value) % 10 + ord('0')
+            encrypted_message += chr(shift)
         elif char == ' ':
-            encrypted_message += '#'  # Use a consistent character for spaces
+            encrypted_message += generate_space_replacement()  # Replace space with a unique character
         else:
             encrypted_message += char  # Leave other special characters unchanged
+
+        # Randomly decide whether to add a number after the character
+        if random.random() < 0.3:  # 30% chance to insert a number
+            encrypted_message += generate_random_digit()
 
     return encrypted_message, hash_value  # Return the encrypted message and hash
 
@@ -55,8 +74,11 @@ def decrypt(encrypted_message, hash_value):
             else:
                 shift = (ord(char) - ord('A') - shift_value) % 26 + ord('A')
             decrypted_message += chr(shift)
-        elif char == '#':
-            decrypted_message += ' '  # Convert the space character back
+        elif char.isdigit():
+            # Skip digits in the encrypted message during decryption
+            continue
+        elif char == generate_space_replacement():  # Check for our unique space character
+            decrypted_message += ' '  # Convert the unique character back to space
         else:
             decrypted_message += char  # Leave other characters unchanged
 
