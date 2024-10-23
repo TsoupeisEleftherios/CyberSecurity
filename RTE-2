@@ -3,26 +3,28 @@ import string
 import hashlib
 import time
 
+
 def generate_hash(message):
     """Generate a hash of the original message using SHA-256."""
     hash_object = hashlib.sha256(message.encode())
     return hash_object.hexdigest()
 
+
 def encrypt(message):
     """Encrypt the message using a complex algorithm."""
+    # Get the current timestamp
+    timestamp = str(int(time.time()))
+
+    # Seed the random number generator with the current timestamp
+    random.seed(timestamp)
+
     # Generate the hash for the original message
     hash_value = generate_hash(message)
 
     # Calculate a shift value based on the hash
     shift_value = sum(ord(c) for c in hash_value) % 26  # Shift based on the hash characters
 
-    # Get current time for randomness
-    current_time = time.time()
-    random.seed(current_time)  # Seed random number generator with current time
-
-    # Encrypt the message
     encrypted_message = ''
-    random_chars = []  # Store random characters to remove them later
 
     for char in message:
         if char.isalpha():
@@ -31,52 +33,39 @@ def encrypt(message):
             else:
                 shift = (ord(char) - ord('A') + shift_value) % 26 + ord('A')
             encrypted_message += chr(shift)
+        elif char == ' ':
+            encrypted_message += '#'  # Use a consistent character for spaces
         else:
-            encrypted_message += char  # Non-alphabetic characters are unchanged
+            encrypted_message += char  # Leave other special characters unchanged
 
-    # Add random characters into the encrypted message for obfuscation
-    num_random_chars = random.randint(1, len(encrypted_message) // 2)  # Random number of characters to add
-    for _ in range(num_random_chars):
-        random_char = random.choice(string.ascii_letters + string.digits + string.punctuation)
-        encrypted_message += random_char  # Add random characters to the end
+    return encrypted_message, hash_value  # Return the encrypted message and hash
 
-    # Append the hash value to the encrypted message without a delimiter
-    encrypted_message += hash_value
-
-    return encrypted_message.replace(' ', ''), hash_value  # Return the encrypted message
 
 def decrypt(encrypted_message, hash_value):
     """Decrypt the message by reversing the encryption process."""
-    # Extract the hash from the encrypted message
-    extracted_hash = encrypted_message[-64:]  # SHA-256 produces a 64 character hash
-    message_part = encrypted_message[:-64]  # Extract the actual encrypted message
+    # Calculate the shift value based on the provided hash
+    shift_value = sum(ord(c) for c in hash_value) % 26  # Same shift calculation as in encryption
 
-    # Verify the hash
-    if extracted_hash != hash_value:
-        print("Hash mismatch! Decryption failed.")
-        return None
-
-    # Calculate the shift value based on the hash
-    shift_value = sum(ord(c) for c in hash_value) % 26  # Recompute the shift value
-
-    # Decrypt the message
     decrypted_message = ''
 
-    # Decrypt the message, excluding the random characters
-    for char in message_part:
+    for char in encrypted_message:
         if char.isalpha():
             if char.islower():
                 shift = (ord(char) - ord('a') - shift_value) % 26 + ord('a')
             else:
                 shift = (ord(char) - ord('A') - shift_value) % 26 + ord('A')
             decrypted_message += chr(shift)
+        elif char == '#':
+            decrypted_message += ' '  # Convert the space character back
         else:
-            decrypted_message += char  # Keep non-alphabetic characters
+            decrypted_message += char  # Leave other characters unchanged
 
-    # Clean the decrypted message by removing any extraneous characters
-    decrypted_message = ''.join(filter(str.isalpha, decrypted_message))
+    # Verify if the decrypted message's hash matches the original hash
+    if generate_hash(decrypted_message) == hash_value:
+        return decrypted_message  # Return the valid decrypted message
+    else:
+        return None  # Return None if no valid decryption was found
 
-    return decrypted_message  # Return the decrypted message
 
 # Example usage
 if __name__ == "__main__":
@@ -85,8 +74,8 @@ if __name__ == "__main__":
     if action == 'e':
         message = input("Enter a message to encrypt: ")
         encrypted_message, hash_value = encrypt(message)
-        print("Hash of the original message:", hash_value)
         print("Encrypted message:", encrypted_message)
+        print("Hash of the original message (store securely for decryption):", hash_value)
 
     elif action == 'd':
         encrypted_message = input("Enter the encrypted message: ")
@@ -94,3 +83,5 @@ if __name__ == "__main__":
         decrypted_message = decrypt(encrypted_message, hash_value)
         if decrypted_message:
             print("Decrypted message:", decrypted_message)
+        else:
+            print("Decryption failed! Invalid encrypted message or hash.")
