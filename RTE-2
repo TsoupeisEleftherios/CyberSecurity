@@ -1,6 +1,6 @@
 import random
 import hashlib
-import time  # Import the time module to access timestamps
+import time
 
 def generate_hash(message, timestamp):
     """Generate a hash of the original message and timestamp using SHA-256."""
@@ -10,11 +10,11 @@ def generate_hash(message, timestamp):
 
 def generate_space_replacements():
     """Return a list of unique characters for space replacement."""
-    return ['␣', '•', '◦']  # Various special characters
+    return ['␣', '•', '◦']
 
 def encrypt(message):
     """Encrypt the message using a complex algorithm with randomization."""
-    timestamp = str(int(time.time() * 1000))  # Current time in milliseconds
+    timestamp = str(int(time.time() * 1000)) 
 
     # Generate the hash for the original message, incorporating the timestamp
     hash_value = generate_hash(message, timestamp)
@@ -75,7 +75,6 @@ def decrypt(encrypted_message, hash_value):
 
     return decrypted_message  # Return the decrypted message
 
-# Example usage
 if __name__ == "__main__":
     action = input("Do you want to encrypt or decrypt a message? (e/d): ").strip().lower()
 
