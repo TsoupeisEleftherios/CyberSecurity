@@ -1,25 +1,16 @@
 import random
-import string
 import hashlib
 import time  # Import the time module to access timestamps
-
 
 def generate_hash(message):
     """Generate a hash of the original message using SHA-256."""
     hash_object = hashlib.sha256(message.encode())
     return hash_object.hexdigest()
 
-
 def generate_space_replacement():
     """Return a unique character for space replacement."""
-    # Choose a character that is unlikely to be in the original message
+    # Using a special Unicode character for space replacement
     return '␣'  # Using a special Unicode character
-
-
-def generate_random_digit():
-    """Generate a random digit as a string."""
-    return str(random.randint(0, 9))
-
 
 def encrypt(message):
     """Encrypt the message using a complex algorithm."""
@@ -53,12 +44,7 @@ def encrypt(message):
         else:
             encrypted_message += char  # Leave other special characters unchanged
 
-        # Randomly decide whether to add a number after the character
-        if random.random() < 0.3:  # 30% chance to insert a number
-            encrypted_message += generate_random_digit()
-
     return encrypted_message, hash_value  # Return the encrypted message and hash
-
 
 def decrypt(encrypted_message, hash_value):
     """Decrypt the message by reversing the encryption process."""
@@ -75,8 +61,9 @@ def decrypt(encrypted_message, hash_value):
                 shift = (ord(char) - ord('A') - shift_value) % 26 + ord('A')
             decrypted_message += chr(shift)
         elif char.isdigit():
-            # Skip digits in the encrypted message during decryption
-            continue
+            # Reverse the digit shift during decryption
+            shift = (ord(char) - ord('0') - shift_value) % 10 + ord('0')
+            decrypted_message += chr(shift)
         elif char == generate_space_replacement():  # Check for our unique space character
             decrypted_message += ' '  # Convert the unique character back to space
         else:
@@ -87,7 +74,6 @@ def decrypt(encrypted_message, hash_value):
         return decrypted_message  # Return the valid decrypted message
     else:
         return None  # Return None if no valid decryption was found
-
 
 # Example usage
 if __name__ == "__main__":
