@@ -1,0 +1,127 @@
+import os
+import shutil
+import psutil
+import time
+
+# Define known ransomware extensions
+ransomware_extensions = [
+    '.locky', '.crypt', '.cry', '.crypted',
+    '.crypz', '.enc', '.enc1', '.locked', '.encrypted'
+]
+
+# Define the quarantine folder path based on the user's desktop
+def get_quarantine_folder():
+    """Return the path to the quarantine folder on the user's desktop."""
+    user_home = os.path.expanduser("~")  # Get the user's home directory
+    desktop_path = os.path.join(user_home, "Desktop")  # Define the desktop path
+    quarantine_folder = os.path.join(desktop_path, "quarantine")  # Create the quarantine path
+    return quarantine_folder
+
+# Initialize the quarantine folder
+quarantine_folder = get_quarantine_folder()
+
+def is_ransomware(file_name):
+    """Check if the file has a known ransomware extension."""
+    return any(file_name.endswith(ext) for ext in ransomware_extensions)
+
+def scan_drive(drive):
+    """Scan the drive for ransomware-infected files."""
+    infected_files = []
+    for root, dirs, files in os.walk(drive):
+        for file in files:
+            if is_ransomware(file):
+                infected_files.append(os.path.join(root, file))
+    return infected_files
+
+def delete_file(file_path):
+    """Attempt to delete the infected file."""
+    try:
+        os.remove(file_path)
+        print(f"Deleted: {file_path}")
+        return True
+    except Exception as e:
+        print(f"Failed to delete {file_path}: {e}")
+        return False
+
+def quarantine_file(file_path):
+    """Attempt to move the file to the quarantine folder."""
+    if not os.path.exists(quarantine_folder):
+        os.makedirs(quarantine_folder)  # Create the quarantine folder if it doesn't exist
+
+    try:
+        shutil.move(file_path, quarantine_folder)
+        print(f"Quarantined: {file_path}")
+        return True
+    except Exception as e:
+        print(f"Failed to quarantine {file_path}: {e}")
+        return False
+
+def kill_ransomware_process(file_path):
+    """Attempt to kill processes associated with the infected file."""
+    for proc in psutil.process_iter(['pid', 'name', 'exe']):
+        try:
+            if proc.info['exe'] == file_path:
+                proc.kill()
+                print(f"Killed ransomware process: {proc.info['name']} (PID {proc.info['pid']})")
+                return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+    return False
+
+def retry_delete_quarantine(file, timeout=60):
+    """Retry quarantine while killing the ransomware process for a fixed time."""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        # Try to quarantine the file first
+        if quarantine_file(file):
+            return True  # Success
+
+        # If quarantine fails, try to delete the file
+        if delete_file(file):
+            return True  # Success
+
+        # If both quarantine and deletion fail, try to kill the ransomware process
+        kill_ransomware_process(file)
+
+        # Wait a short interval before retrying
+        time.sleep(0.5)
+
+    return False
+
+def reboot_in_safe_mode():
+    """Instruct the user to reboot in Safe Mode."""
+    print("Could not delete or quarantine ransomware. Please reboot in Safe Mode and run this program again.")
+    # Reboot command for Windows (optional)
+    # subprocess.run(["shutdown", "/r", "/o", "/t", "0"])
+
+def scan_and_clean(drives):
+    """Scan for ransomware and attempt to delete or quarantine it."""
+    infected_files = []
+    for drive in drives:
+        infected_files.extend(scan_drive(drive))  # Scan each drive
+
+    if not infected_files:
+        print("No ransomware detected.")
+        return
+
+    print(f"Detected {len(infected_files)} ransomware-infected files.")
+
+    for file in infected_files:
+        # Try to quarantine the file for 60 seconds
+        if retry_delete_quarantine(file):
+            print(f"Successfully handled ransomware file: {file}")
+        else:
+            # If retrying quarantine fails, suggest Safe Mode
+            print(f"Failed to handle {file} after 60 seconds.")
+            reboot_in_safe_mode()
+            return  # Exit after recommending Safe Mode
+
+def get_all_possible_drives():
+    """Return a list of all available drives on the system."""
+    drives = [f"{d}:\\" for d in range(65, 91) if os.path.exists(f"{d}:")]
+    return drives
+
+# Example usage: Scan all possible drives
+if __name__ == "__main__":
+    target_drives = get_all_possible_drives()
+    scan_and_clean(target_drives)
