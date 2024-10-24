@@ -1,0 +1,14 @@
+RTE-2 :
+encrypt and decrypt based on timestamp program has run
+
+
+RFAK(Ransomware First Aid Kit):
+scans the PC for infected files , tries to quarantine instead of deleting them while trying
+to handle the ransomware and tries to kill its proccess
+
+Steganography:
+encrypts messages inside photos
+
+Instant Backup USB(IB-USB):
+a USB that can extract all files at first from a pc and then goes to scan again files (if missed) for specific keywords
+like "finance" , "salary" etc.
