@@ -7,10 +7,10 @@ def generate_hash(message):
     hash_object = hashlib.sha256(message.encode())
     return hash_object.hexdigest()
 
-def generate_space_replacement():
-    """Return a unique character for space replacement."""
-    # Using a special Unicode character for space replacement
-    return '␣'  # Using a special Unicode character
+def generate_space_replacements():
+    """Return a list of unique characters for space replacement."""
+    # Choose multiple special Unicode characters for space replacement
+    return ['␣', '•', '◦']  # Various special characters
 
 def encrypt(message):
     """Encrypt the message using a complex algorithm."""
@@ -26,6 +26,9 @@ def encrypt(message):
     # Calculate a shift value based on the hash
     shift_value = sum(ord(c) for c in hash_value) % 26  # Shift based on the hash characters
 
+    # Get space replacements
+    space_replacements = generate_space_replacements()
+
     encrypted_message = ''
 
     for char in message:
@@ -40,7 +43,8 @@ def encrypt(message):
             shift = (ord(char) - ord('0') + shift_value) % 10 + ord('0')
             encrypted_message += chr(shift)
         elif char == ' ':
-            encrypted_message += generate_space_replacement()  # Replace space with a unique character
+            # Replace space with a random unique character from space replacements
+            encrypted_message += random.choice(space_replacements)
         else:
             encrypted_message += char  # Leave other special characters unchanged
 
@@ -53,6 +57,9 @@ def decrypt(encrypted_message, hash_value):
 
     decrypted_message = ''
 
+    # Get space replacements
+    space_replacements = generate_space_replacements()
+
     for char in encrypted_message:
         if char.isalpha():
             if char.islower():
@@ -64,7 +71,7 @@ def decrypt(encrypted_message, hash_value):
             # Reverse the digit shift during decryption
             shift = (ord(char) - ord('0') - shift_value) % 10 + ord('0')
             decrypted_message += chr(shift)
-        elif char == generate_space_replacement():  # Check for our unique space character
+        elif char in space_replacements:  # Check for space replacements
             decrypted_message += ' '  # Convert the unique character back to space
         else:
             decrypted_message += char  # Leave other characters unchanged
