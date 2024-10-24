@@ -2,26 +2,25 @@ import random
 import hashlib
 import time  # Import the time module to access timestamps
 
-def generate_hash(message):
-    """Generate a hash of the original message using SHA-256."""
-    hash_object = hashlib.sha256(message.encode())
+def generate_hash(message, timestamp):
+    """Generate a hash of the original message and timestamp using SHA-256."""
+    combined_message = f"{message}{timestamp}"
+    hash_object = hashlib.sha256(combined_message.encode())
     return hash_object.hexdigest()
 
 def generate_space_replacements():
     """Return a list of unique characters for space replacement."""
-    # Choose multiple special Unicode characters for space replacement
     return ['␣', '•', '◦']  # Various special characters
 
 def encrypt(message):
-    """Encrypt the message using a complex algorithm."""
-    # Get the current timestamp
-    timestamp = str(int(time.time()))  # Current time in seconds since epoch
+    """Encrypt the message using a complex algorithm with randomization."""
+    timestamp = str(int(time.time() * 1000))  # Current time in milliseconds
 
-    # Seed the random number generator with the current timestamp
-    random.seed(timestamp)
+    # Generate the hash for the original message, incorporating the timestamp
+    hash_value = generate_hash(message, timestamp)
 
-    # Generate the hash for the original message
-    hash_value = generate_hash(message)
+    # Seed the random number generator with the current timestamp to introduce randomness
+    random.seed(int(timestamp))
 
     # Calculate a shift value based on the hash
     shift_value = sum(ord(c) for c in hash_value) % 26  # Shift based on the hash characters
@@ -51,13 +50,11 @@ def encrypt(message):
     return encrypted_message, hash_value  # Return the encrypted message and hash
 
 def decrypt(encrypted_message, hash_value):
-    """Decrypt the message by reversing the encryption process."""
+    """Decrypt the message using the hash and reverse the encryption process."""
     # Calculate the shift value based on the provided hash
     shift_value = sum(ord(c) for c in hash_value) % 26  # Same shift calculation as in encryption
 
     decrypted_message = ''
-
-    # Get space replacements
     space_replacements = generate_space_replacements()
 
     for char in encrypted_message:
@@ -76,11 +73,7 @@ def decrypt(encrypted_message, hash_value):
         else:
             decrypted_message += char  # Leave other characters unchanged
 
-    # Verify if the decrypted message's hash matches the original hash
-    if generate_hash(decrypted_message) == hash_value:
-        return decrypted_message  # Return the valid decrypted message
-    else:
-        return None  # Return None if no valid decryption was found
+    return decrypted_message  # Return the decrypted message
 
 # Example usage
 if __name__ == "__main__":
