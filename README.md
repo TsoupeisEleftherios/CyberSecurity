@@ -14,12 +14,13 @@ This repository contains various Python scripts and utilities designed to assist
 ### MIT Licensed Tools
 Most scripts in this repository are provided under the permissive MIT License, allowing you to freely use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the software.
 
-### Exhaustor DDoS Tool (AGPL-3.0)
-The Exhaustor DDoS tool is licensed under the GNU Affero General Public License v3. This means:
+### Commercial Lisence (AGPL-3.0)
+The Exhaustor DDoS tool and DNS Blaster is licensed under the GNU Affero General Public License v3. This means:
 
 - You can use, modify, and distribute Exhaustor freely.
 - If you run Exhaustor as a network service (e.g., as a SaaS), you must share the source code of your modified version under the same license.
 - Commercial use requires obtaining a separate commercial license.
+- (Personal message for archive pass / commercial use)
 
 Please review the `LICENSE` file in the Exhaustor directory for full details.
 
