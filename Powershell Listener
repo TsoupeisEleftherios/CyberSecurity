@@ -1,0 +1,137 @@
+param(
+    [string]$Bind = '0.0.0.0',
+    [int]$Port = 4444,
+    [string]$LogPath = '',
+    [string[]]$Allowlist = @(),
+    [switch]$HexDisplay
+)
+
+function Log {
+    param($text)
+    if (![string]::IsNullOrEmpty($LogPath)) {
+        $ts = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+        $line = "$ts`t$text"
+        $dir = Split-Path $LogPath -Parent
+        if (-not (Test-Path $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
+        Add-Content -Path $LogPath -Value $line
+    }
+}
+
+# Helper to display bytes either raw (UTF8) or hex
+function DisplayBytes {
+    param([byte[]]$buf, [int]$count, [string]$remote)
+    if ($HexDisplay) {
+        $hex = ($buf[0..($count-1)] | ForEach-Object { '{0:x2}' -f $_ }) -join ' '
+        [Console]::WriteLine("`n[$remote] HEX: $hex")
+        Log "FROM[$remote] HEX: $hex"
+    } else {
+        try {
+            $s = [System.Text.Encoding]::UTF8.GetString($buf,0,$count)
+        } catch {
+            $s = [System.Text.Encoding]::ASCII.GetString($buf,0,$count)
+        }
+        # Write raw (no extra newline) so stream feels continuous
+        [Console]::Write($s)
+        Log "FROM[$remote] $s"
+    }
+}
+
+# Start listener
+try {
+    if ($Bind -eq '0.0.0.0' -or $Bind -eq '::') {
+        $ip = [System.Net.IPAddress]::Any
+    } else {
+        $ip = [System.Net.IPAddress]::Parse($Bind)
+    }
+    $listener = New-Object System.Net.Sockets.TcpListener($ip, $Port)
+    $listener.Start()
+    Write-Host "LISTENER started on $Bind:$Port"
+    Log "LISTENER started on $Bind:$Port"
+
+    Write-Host "Waiting for incoming connection..."
+    $client = $listener.AcceptTcpClient()
+    $remoteEP = $client.Client.RemoteEndPoint.ToString()
+    $remoteIP = ($client.Client.RemoteEndPoint).Address.ToString()
+    Write-Host "Connection from $remoteEP"
+    Log "Connection from $remoteEP"
+
+    if (($Allowlist -ne $null) -and ($Allowlist.Count -gt 0)) {
+        if (-not ($Allowlist -contains $remoteIP)) {
+            Write-Host "REJECT: $remoteIP not in allowlist. Closing."
+            Log "REJECTED: $remoteIP not in allowlist."
+            $client.Close(); $listener.Stop()
+            return
+        }
+    }
+
+    $stream = $client.GetStream()
+    $writer = New-Object System.IO.BinaryWriter($stream)   # send bytes as-is
+    $buffer = New-Object byte[] 8192
+
+    # Reader thread: continuously read from network and print
+    $readerFunc = {
+        param($streamObj, $remoteEP, $hexSwitch)
+        $localBuf = New-Object byte[] 8192
+        try {
+            while ($streamObj.CanRead) {
+                $read = 0
+                try {
+                    $read = $streamObj.Read($localBuf, 0, $localBuf.Length)
+                } catch {
+                    break
+                }
+                if ($read -le 0) { break }
+                # Use outer function DisplayBytes via script scope
+                & ${function:DisplayBytes} $localBuf $read $remoteEP
+            }
+        } catch {
+            # ignore — stream closed
+        } finally {
+            # ensure newline when remote disconnects so prompt looks nice
+            [Console]::WriteLine()
+        }
+    }
+
+    # Start the reader thread
+    $threadStart = [System.Threading.ThreadStart]{
+        # closure: $stream, $remoteEP, $HexDisplay are in outer scope
+        & $readerFunc $stream $remoteEP $HexDisplay.IsPresent
+    }
+    $readerThread = New-Object System.Threading.Thread($threadStart)
+    $readerThread.IsBackground = $true
+    $readerThread.Start()
+
+    Write-Host "Interactive session ready. Type lines and press Enter to send. Type 'exit' to close."
+    Log "Interactive session established with $remoteEP"
+
+    # Main loop: read operator input (blocks) and send exact bytes + newline
+    while ($client.Connected) {
+        $line = [Console]::ReadLine()
+        if ($null -eq $line) { break }
+        # send the line followed by CRLF (like netcat on enter)
+        $send = $line + "`r`n"
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($send)
+        try {
+            $writer.Write($bytes)
+            $writer.Flush()
+            Log "TO[$remoteEP] $line"
+        } catch {
+            Write-Host "Error sending: $($_.Exception.Message)"
+            break
+        }
+        if ($line -eq 'exit') {
+            Write-Host "Operator requested exit — closing."
+            break
+        }
+    }
+
+} catch {
+    Write-Host "ERROR: $($_.Exception.Message)"
+    Log "ERROR: $($_.Exception.Message)"
+} finally {
+    try { if ($stream) { $stream.Close(); $stream.Dispose() } } catch {}
+    try { if ($client) { $client.Close() } } catch {}
+    try { if ($listener) { $listener.Stop() } } catch {}
+    Log "Listener stopped/cleaned up."
+    Write-Host "`nListener stopped."
+}
