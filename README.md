@@ -6,8 +6,8 @@ Welcome to my collection of cybersecurity and penetration testing tools.
 
 This repository contains various Python scripts and utilities designed to assist with penetration testing, scanning, and network attacks.
 
-- **All tools and scripts except Exhaustor are free to use, modify, and contribute to under the MIT License.**
-- **Exhaustor DDoS Tool is licensed under the GNU Affero General Public License v3 (AGPL-3.0).**
+- **All tools and scripts except Exhaustor and other tools are free to use, modify, and contribute to under the MIT License.**
+- **Exhaustor DDoS Tool as well as other archived ones are licensed under the GNU Affero General Public License v3 (AGPL-3.0) and can e requested under lisence.**
 
 ## Licensing Details
 
@@ -15,9 +15,9 @@ This repository contains various Python scripts and utilities designed to assist
 Most scripts in this repository are provided under the permissive MIT License, allowing you to freely use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the software.
 
 ### Commercial Lisence (AGPL-3.0)
-The Exhaustor DDoS tool and DNS Blaster is licensed under the GNU Affero General Public License v3. This means:
+The Exhaustor DDoS tool, DNS Blaster and other tools are licensed under the GNU Affero General Public License v3. This means:
 
-- You can use, modify, and distribute Exhaustor freely.
+- You can use, modify, and distribute freely.
 - If you run Exhaustor as a network service (e.g., as a SaaS), you must share the source code of your modified version under the same license.
 - Commercial use requires obtaining a separate commercial license.
 - (Personal message for archive pass / commercial use)
