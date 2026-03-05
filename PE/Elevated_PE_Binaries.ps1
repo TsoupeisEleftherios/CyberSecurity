@@ -20,262 +20,244 @@ Author: Security Audit Tool
 #>
 
 param(
-    [switch]$VerboseMode,
-    [string]$ExportCsv = ""
+    [switch]$x,
+    [string]$o=""
 )
 
-function V($msg){
-    if($VerboseMode){
-        Write-Host "[+] $msg" -ForegroundColor Cyan
-    }
-}
+# ----------- helpers -------------
 
-function Expand-PathSafe($p){
+function __l($t){ if($x){ Write-Host ("[+]"+$t) -F Cyan } }
+
+function __e($p){
     if(!$p){ return $null }
     return [Environment]::ExpandEnvironmentVariables($p)
 }
 
-function Get-PathPermissions($Path){
+function __acl($p){
 
-    if(!(Test-Path $Path)){ return $null }
+    if(!(Test-Path $p)){ return $false }
 
     try{
-        $acl = Get-Acl $Path
-        $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+        $a = Get-Acl -LiteralPath $p
+        $u = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
-        foreach($ace in $acl.Access){
+        foreach($i in $a.Access){
 
-            if($ace.AccessControlType -ne "Allow"){ continue }
+            if($i.AccessControlType -ne "Allow"){ continue }
 
-            if($ace.FileSystemRights -match "Write|Modify|FullControl"){
+            $r = $i.FileSystemRights.ToString()
+
+            if($r -match "Write|Modify|Full"){
 
                 if(
-                    $ace.IdentityReference -match "Users" -or
-                    $ace.IdentityReference -match "Everyone" -or
-                    $ace.IdentityReference -match $user
+                    $i.IdentityReference -match "Users" -or
+                    $i.IdentityReference -match "Everyone" -or
+                    $i.IdentityReference.Value -eq $u
                 ){
                     return $true
                 }
             }
         }
-
     }catch{}
 
     return $false
 }
 
-function Test-FolderWritable($Path){
-
+function __dir($p){
     try{
-        $folder = Split-Path $Path -Parent
-        return Get-PathPermissions $folder
-    }catch{
-        return $false
+        $d = Split-Path $p -Parent
+        return __acl $d
+    }catch{ return $false }
+}
+
+function __sc($u,$f,$d){
+
+    $s = 0
+
+    if($u -match "SYSTEM"){ $s += 50 }
+    elseif($u -match "Admin"){ $s += 40 }
+
+    if($f){ $s += 30 }
+    if($d){ $s += 20 }
+
+    return $s
+}
+
+# -------- storage ---------
+
+$out = @()
+
+# =====================================================
+# POLICY CHECK
+# =====================================================
+
+__l "policy"
+
+$k1 = "HKLM:\Software\Policies\Microsoft\Windows\Installer"
+$k2 = "HKCU:\Software\Policies\Microsoft\Windows\Installer"
+
+$p1 = Get-ItemProperty $k1 -EA 0
+$p2 = Get-ItemProperty $k2 -EA 0
+
+if(($p1.AlwaysInstallElevated -eq 1) -and ($p2.AlwaysInstallElevated -eq 1)){
+
+    $out += [pscustomobject]@{
+        A="Policy"
+        B="AlwaysInstallElevated"
+        C="msiexec"
+        D="SYSTEM"
+        E=$true
+        F=$true
+        S=100
     }
 }
 
-function Get-AbuseScore($user,$fileWritable,$folderWritable){
-
-    $score = 0
-
-    if($user -match "SYSTEM"){ $score += 50 }
-    elseif($user -match "Admin"){ $score += 40 }
-
-    if($fileWritable){ $score += 30 }
-    if($folderWritable){ $score += 20 }
-
-    return $score
-}
-
-$results = @()
-
-# ------------------------------------------------
-# ALWAYSINSTALLELEVATED CHECK
-# ------------------------------------------------
-
-V "Checking AlwaysInstallElevated..."
-
-$HKLM = Get-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\Installer" -ErrorAction SilentlyContinue
-$HKCU = Get-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\Installer" -ErrorAction SilentlyContinue
-
-if($HKLM.AlwaysInstallElevated -eq 1 -and $HKCU.AlwaysInstallElevated -eq 1){
-
-    $results += [PSCustomObject]@{
-        Source="Policy"
-        Name="AlwaysInstallElevated"
-        Execute="msiexec.exe"
-        User="SYSTEM"
-        FileWritable="True"
-        FolderWritable="True"
-        AbuseScore=100
-    }
-}
-
-# ------------------------------------------------
+# =====================================================
 # SERVICES
-# ------------------------------------------------
+# =====================================================
 
-V "Scanning services..."
+__l "svc"
 
-Get-CimInstance Win32_Service | ForEach-Object{
+Get-CimInstance Win32_Service -EA 0 | ForEach-Object{
 
-    $path = ($_ .PathName -replace '"','').Split(" ")[0]
+    $raw = $_.PathName
+    if(!$raw){ return }
 
-    if($path -notmatch "\.(exe|msi)$"){ return }
+    $p = ($raw -replace '"','').Split(" ")[0]
+    $p = __e $p
 
-    $path = Expand-PathSafe $path
+    if($p -notmatch "\.(exe|msi)$"){ return }
+    if(!(Test-Path $p)){ return }
 
-    if(!(Test-Path $path)){ return }
+    $fw = __acl $p
+    $fd = __dir $p
 
-    $fileWritable = Get-PathPermissions $path
-    $folderWritable = Test-FolderWritable $path
+    if(!($fw -or $fd)){ return }
 
-    if(!($fileWritable -or $folderWritable)){ return }
+    $out += [pscustomobject]@{
 
-    $results += [PSCustomObject]@{
-
-        Source="Service"
-        Name=$_.Name
-        Execute=$path
-        User=$_.StartName
-        FileWritable=$fileWritable
-        FolderWritable=$folderWritable
-        AbuseScore=Get-AbuseScore $_.StartName $fileWritable $folderWritable
+        A="Svc"
+        B=$_.Name
+        C=$p
+        D=$_.StartName
+        E=$fw
+        F=$fd
+        S=(__sc $_.StartName $fw $fd)
     }
-
 }
 
-# ------------------------------------------------
-# SCHEDULED TASKS
-# ------------------------------------------------
+# =====================================================
+# TASKS
+# =====================================================
 
-V "Scanning scheduled tasks..."
+__l "task"
 
-Get-ScheduledTask | ForEach-Object{
+Get-ScheduledTask -EA 0 | ForEach-Object{
 
-    $user=$_.Principal.UserId
+    $usr = $_.Principal.UserId
 
     foreach($act in $_.Actions){
 
-        $exe = Expand-PathSafe $act.Execute
+        $exe = __e $act.Execute
+        if(!$exe){ continue }
 
         if($exe -notmatch "\.(exe|msi)$"){ continue }
-
         if(!(Test-Path $exe)){ continue }
 
-        $fileWritable = Get-PathPermissions $exe
-        $folderWritable = Test-FolderWritable $exe
+        $fw = __acl $exe
+        $fd = __dir $exe
 
-        if(!($fileWritable -or $folderWritable)){ continue }
+        if(!($fw -or $fd)){ continue }
 
-        $results += [PSCustomObject]@{
+        $out += [pscustomobject]@{
 
-            Source="ScheduledTask"
-            Name="$($_.TaskPath)$($_.TaskName)"
-            Execute=$exe
-            User=$user
-            FileWritable=$fileWritable
-            FolderWritable=$folderWritable
-            AbuseScore=Get-AbuseScore $user $fileWritable $folderWritable
+            A="Task"
+            B=$_.TaskName
+            C=$exe
+            D=$usr
+            E=$fw
+            F=$fd
+            S=(__sc $usr $fw $fd)
         }
-
     }
-
 }
 
-# ------------------------------------------------
-# UNINSTALLERS (MSI ABUSE)
-# ------------------------------------------------
+# =====================================================
+# UNINSTALL
+# =====================================================
 
-V "Scanning uninstall registry..."
+__l "uninstall"
 
-$uninstallPaths=@(
-"HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
-"HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
-)
+$uA = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+$uB = "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
 
-foreach($path in $uninstallPaths){
+foreach($k in $uA,$uB){
 
-    Get-ItemProperty $path -ErrorAction SilentlyContinue | ForEach-Object{
+    Get-ItemProperty $k -EA 0 | ForEach-Object{
 
-        $cmd=$_.UninstallString
-
+        $cmd = $_.UninstallString
         if(!$cmd){ return }
 
         if($cmd -notmatch "\.(exe|msi)"){ return }
 
-        $exe=$cmd.Split(" ")[0].Replace('"','')
+        $exe = __e ($cmd.Split(" ")[0].Replace('"',''))
 
         if(!(Test-Path $exe)){ return }
 
-        $fileWritable = Get-PathPermissions $exe
-        $folderWritable = Test-FolderWritable $exe
+        $fw = __acl $exe
+        $fd = __dir $exe
 
-        if(!($fileWritable -or $folderWritable)){ return }
+        if(!($fw -or $fd)){ return }
 
-        $results += [PSCustomObject]@{
+        $out += [pscustomobject]@{
 
-            Source="UninstallEntry"
-            Name=$_.DisplayName
-            Execute=$exe
-            User="SYSTEM/Admin"
-            FileWritable=$fileWritable
-            FolderWritable=$folderWritable
-            AbuseScore=Get-AbuseScore "Admin" $fileWritable $folderWritable
+            A="Uninst"
+            B=$_.DisplayName
+            C=$exe
+            D="Admin"
+            E=$fw
+            F=$fd
+            S=(__sc "Admin" $fw $fd)
         }
-
     }
-
 }
 
-# ------------------------------------------------
-# PROGRAM FILES WRITEABLE BINARIES
-# ------------------------------------------------
+# =====================================================
+# PROGRAM FILES (Limited Depth - Still Deep Enough)
+# =====================================================
 
-V "Scanning Program Files..."
+__l "pf"
 
-$paths=@(
-"$env:ProgramFiles",
-"$env:ProgramFiles(x86)"
-)
+"$env:ProgramFiles","$env:ProgramFiles(x86)" | ForEach-Object{
 
-foreach($p in $paths){
+    if(!(Test-Path $_)){ return }
 
-    Get-ChildItem $p -Recurse -Include *.exe,*.msi -ErrorAction SilentlyContinue | ForEach-Object{
+    Get-ChildItem $_ -Recurse -Depth 2 -Include *.exe,*.msi -EA 0 | ForEach-Object{
 
-        $fileWritable = Get-PathPermissions $_.FullName
-        $folderWritable = Test-FolderWritable $_.FullName
+        $fw = __acl $_.FullName
+        $fd = __dir $_.FullName
 
-        if($fileWritable -or $folderWritable){
+        if(!($fw -or $fd)){ return }
 
-            $results += [PSCustomObject]@{
+        $out += [pscustomobject]@{
 
-                Source="ProgramFilesBinary"
-                Name=$_.Name
-                Execute=$_.FullName
-                User="Unknown"
-                FileWritable=$fileWritable
-                FolderWritable=$folderWritable
-                AbuseScore=Get-AbuseScore "" $fileWritable $folderWritable
-            }
-
+            A="PF"
+            B=$_.Name
+            C=$_.FullName
+            D="Unknown"
+            E=$fw
+            F=$fd
+            S=(__sc "" $fw $fd)
         }
-
     }
-
 }
 
-# ------------------------------------------------
-# OUTPUT
-# ------------------------------------------------
+# =====================================================
 
-$results = $results | Sort-Object AbuseScore -Descending
+$out = $out | Sort-Object S -Desc
 
-$results | Format-Table -AutoSize
+$out | Format-Table -AutoSize
 
-if($ExportCsv){
-
-    $results | Export-Csv $ExportCsv -NoTypeInformation
-    Write-Host "CSV exported -> $ExportCsv"
-
+if($o){
+    $out | Export-Csv $o -NoTypeInformation
 }
