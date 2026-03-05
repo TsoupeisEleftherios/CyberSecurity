@@ -1,108 +1,86 @@
 <#
-Elevated Binary / MSI Privilege Escalation Auditor
+Elevated Binary / MSI Privilege Escalation Tool
 -------------------------------------------------
-
-Finds binaries installers or executables that:
-
-1. Run as SYSTEM / Admin
-2. Are writable by the current user
-
-Detects:
- ✔ Writable service executables
- ✔ Writable scheduled task binaries
- ✔ Writable MSI installers
- ✔ AlwaysInstallElevated misconfiguration
- ✔ Writable uninstallers
- ✔ Writable binaries in Program Files
- ✔ Abuse scoring
-
-Author: Security Audit Tool
+Author: 0xTr4c3
 #>
 
 param(
-    [switch]$x,
-    [string]$o=""
+    [switch]$z,
+    [string]$out=""
 )
 
-# ----------- helpers -------------
+function _l($m){ if($z){ Write-Host ("[+]"+$m) -F Cyan } }
 
-function __l($t){ if($x){ Write-Host ("[+]"+$t) -F Cyan } }
-
-function __e($p){
+function _e($p){
     if(!$p){ return $null }
     return [Environment]::ExpandEnvironmentVariables($p)
 }
 
-function __acl($p){
+function _w($p){
 
     if(!(Test-Path $p)){ return $false }
 
     try{
+
         $a = Get-Acl -LiteralPath $p
         $u = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
-        foreach($i in $a.Access){
+        foreach($x in $a.Access){
 
-            if($i.AccessControlType -ne "Allow"){ continue }
+            if($x.AccessControlType -ne "Allow"){ continue }
 
-            $r = $i.FileSystemRights.ToString()
-
-            if($r -match "Write|Modify|Full"){
+            if($x.FileSystemRights.ToString() -match "Write|Modify|Full"){
 
                 if(
-                    $i.IdentityReference -match "Users" -or
-                    $i.IdentityReference -match "Everyone" -or
-                    $i.IdentityReference.Value -eq $u
+                    $x.IdentityReference -match "Users" -or
+                    $x.IdentityReference -match "Everyone" -or
+                    $x.IdentityReference.Value -eq $u
                 ){
                     return $true
                 }
             }
         }
+
     }catch{}
 
     return $false
 }
 
-function __dir($p){
-    try{
-        $d = Split-Path $p -Parent
-        return __acl $d
-    }catch{ return $false }
+function _d($p){
+    try{ return _w (Split-Path $p -Parent) }
+    catch{ return $false }
 }
 
-function __sc($u,$f,$d){
+function _s($u,$f,$d){
+    $x=0
+    if($u -match "SYSTEM"){ $x+=50 }
+    elseif($u -match "LocalSystem"){ $x+=50 }
+    elseif($u -match "Admin"){ $x+=40 }
 
-    $s = 0
+    if($f){ $x+=30 }
+    if($d){ $x+=20 }
 
-    if($u -match "SYSTEM"){ $s += 50 }
-    elseif($u -match "Admin"){ $s += 40 }
-
-    if($f){ $s += 30 }
-    if($d){ $s += 20 }
-
-    return $s
+    return $x
 }
 
-# -------- storage ---------
+$r=@()
 
-$out = @()
+# File patterns now include DLL
+$ext = "\.(exe|msi|dll)$"
 
 # =====================================================
-# POLICY CHECK
+# Policy
 # =====================================================
 
-__l "policy"
+_l "pol"
 
-$k1 = "HKLM:\Software\Policies\Microsoft\Windows\Installer"
-$k2 = "HKCU:\Software\Policies\Microsoft\Windows\Installer"
-
-$p1 = Get-ItemProperty $k1 -EA 0
-$p2 = Get-ItemProperty $k2 -EA 0
+$p1 = Get-ItemProperty "HKLM:\Software\Policies\Microsoft\Windows\Installer" -EA 0
+$p2 = Get-ItemProperty "HKCU:\Software\Policies\Microsoft\Windows\Installer" -EA 0
 
 if(($p1.AlwaysInstallElevated -eq 1) -and ($p2.AlwaysInstallElevated -eq 1)){
 
-    $out += [pscustomobject]@{
-        A="Policy"
+    $r += [pscustomobject]@{
+        A="Pol"
         B="AlwaysInstallElevated"
         C="msiexec"
         D="SYSTEM"
@@ -113,151 +91,146 @@ if(($p1.AlwaysInstallElevated -eq 1) -and ($p2.AlwaysInstallElevated -eq 1)){
 }
 
 # =====================================================
-# SERVICES
+# Services
 # =====================================================
 
-__l "svc"
+_l "svc"
 
 Get-CimInstance Win32_Service -EA 0 | ForEach-Object{
 
-    $raw = $_.PathName
+    $raw=$_.PathName
     if(!$raw){ return }
 
-    $p = ($raw -replace '"','').Split(" ")[0]
-    $p = __e $p
+    $p=_e(($raw -replace '"','').Split(" ")[0])
 
-    if($p -notmatch "\.(exe|msi)$"){ return }
+    if($p -notmatch $ext){ return }
     if(!(Test-Path $p)){ return }
 
-    $fw = __acl $p
-    $fd = __dir $p
+    $fw=_w $p
+    $fd=_d $p
 
     if(!($fw -or $fd)){ return }
 
-    $out += [pscustomobject]@{
-
+    $r += [pscustomobject]@{
         A="Svc"
         B=$_.Name
         C=$p
         D=$_.StartName
         E=$fw
         F=$fd
-        S=(__sc $_.StartName $fw $fd)
+        S=(_s $_.StartName $fw $fd)
     }
 }
 
 # =====================================================
-# TASKS
+# Tasks
 # =====================================================
 
-__l "task"
+_l "tsk"
 
 Get-ScheduledTask -EA 0 | ForEach-Object{
 
-    $usr = $_.Principal.UserId
+    $u=$_.Principal.UserId
 
-    foreach($act in $_.Actions){
+    foreach($a in $_.Actions){
 
-        $exe = __e $act.Execute
+        $exe=_e $a.Execute
         if(!$exe){ continue }
 
-        if($exe -notmatch "\.(exe|msi)$"){ continue }
+        if($exe -notmatch $ext){ continue }
         if(!(Test-Path $exe)){ continue }
 
-        $fw = __acl $exe
-        $fd = __dir $exe
+        $fw=_w $exe
+        $fd=_d $exe
 
         if(!($fw -or $fd)){ continue }
 
-        $out += [pscustomobject]@{
-
+        $r += [pscustomobject]@{
             A="Task"
             B=$_.TaskName
             C=$exe
-            D=$usr
+            D=$u
             E=$fw
             F=$fd
-            S=(__sc $usr $fw $fd)
+            S=(_s $u $fw $fd)
         }
     }
 }
 
 # =====================================================
-# UNINSTALL
+# Uninstall
 # =====================================================
 
-__l "uninstall"
+_l "uni"
 
-$uA = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
-$uB = "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+$u1="HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+$u2="HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
 
-foreach($k in $uA,$uB){
+foreach($k in $u1,$u2){
 
     Get-ItemProperty $k -EA 0 | ForEach-Object{
 
-        $cmd = $_.UninstallString
+        $cmd=$_.UninstallString
         if(!$cmd){ return }
 
-        if($cmd -notmatch "\.(exe|msi)"){ return }
+        if($cmd -notmatch $ext){ return }
 
-        $exe = __e ($cmd.Split(" ")[0].Replace('"',''))
+        $exe=_e ($cmd.Split(" ")[0].Replace('"',''))
 
         if(!(Test-Path $exe)){ return }
 
-        $fw = __acl $exe
-        $fd = __dir $exe
+        $fw=_w $exe
+        $fd=_d $exe
 
         if(!($fw -or $fd)){ return }
 
-        $out += [pscustomobject]@{
-
+        $r += [pscustomobject]@{
             A="Uninst"
             B=$_.DisplayName
             C=$exe
             D="Admin"
             E=$fw
             F=$fd
-            S=(__sc "Admin" $fw $fd)
+            S=(_s "Admin" $fw $fd)
         }
     }
 }
 
 # =====================================================
-# PROGRAM FILES (Limited Depth - Still Deep Enough)
+# Program Files
 # =====================================================
 
-__l "pf"
+_l "pf"
 
 "$env:ProgramFiles","$env:ProgramFiles(x86)" | ForEach-Object{
 
     if(!(Test-Path $_)){ return }
 
-    Get-ChildItem $_ -Recurse -Depth 2 -Include *.exe,*.msi -EA 0 | ForEach-Object{
+    Get-ChildItem $_ -Recurse -Depth 2 -Include *.exe,*.msi,*.dll -EA 0 | ForEach-Object{
 
-        $fw = __acl $_.FullName
-        $fd = __dir $_.FullName
+        $fw=_w $_.FullName
+        $fd=_d $_.FullName
 
         if(!($fw -or $fd)){ return }
 
-        $out += [pscustomobject]@{
-
+        $r += [pscustomobject]@{
             A="PF"
             B=$_.Name
             C=$_.FullName
             D="Unknown"
             E=$fw
             F=$fd
-            S=(__sc "" $fw $fd)
+            S=(_s "" $fw $fd)
         }
     }
 }
 
 # =====================================================
 
-$out = $out | Sort-Object S -Desc
+$r = $r | Sort-Object S -Desc
 
-$out | Format-Table -AutoSize
+$r | Format-Table -AutoSize
 
-if($o){
-    $out | Export-Csv $o -NoTypeInformation
+if($out){
+    $r | Export-Csv $out -NoTypeInformation
 }
