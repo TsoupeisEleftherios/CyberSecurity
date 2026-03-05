@@ -1,6 +1,6 @@
 <#
-Unquoted Service Path Finder - Full Corrected Version
----------------------------------------------
+Unquoted Service Path Finder - Clean & Professional Version
+------------------------------------------------------------
 Author: 0xTr4c3
 #>
 
@@ -29,8 +29,8 @@ function Get-Permissions($Path){
 
             if($ace.AccessControlType -ne "Allow"){ continue }
 
-            $rights = $ace.FileSystemRights.ToString()
-            $writable = $rights -match "Write|Modify|Full"
+            $rights   = $ace.FileSystemRights.ToString()
+            $writable  = $rights -match "Write|Modify|Full"
 
             $isMine =
                 $ace.IdentityReference.Value -eq $me -or
@@ -39,7 +39,7 @@ function Get-Permissions($Path){
             $perms += [pscustomobject]@{
                 Identity = $ace.IdentityReference.Value
                 Rights   = $rights
-                Writable = ($writable -and $isMine)
+                Writable  = ($writable -and $isMine)
             }
         }
 
@@ -50,15 +50,15 @@ function Get-Permissions($Path){
     }
 }
 
-function _score($u,$w){
+function _score($user,$vuln){
 
     $s = 0
 
-    if($u -match "SYSTEM"){ $s += 50 }
-    elseif($u -match "LocalSystem"){ $s += 50 }
-    elseif($u -match "Admin"){ $s += 40 }
+    if($user -match "SYSTEM"){ $s += 50 }
+    elseif($user -match "LocalSystem"){ $s += 50 }
+    elseif($user -match "Admin"){ $s += 40 }
 
-    if($w){ $s += 40 }
+    if($vuln){ $s += 40 }
 
     return $s
 }
@@ -75,10 +75,10 @@ Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | ForEach-Object {
 
     if(!$rawPath){ return }
 
-    # Remove quotes + expand env variables
+    # Remove quotes + expand env vars
     $expanded = _e ($rawPath -replace '"','')
 
-    # Extract executable part only
+    # Extract executable portion only
     $exePath = $expanded.Split(" ")[0]
 
     if(!(Test-Path $exePath)){ return }
@@ -125,14 +125,21 @@ Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | ForEach-Object {
     $folderAcl = Get-Permissions (Split-Path $exePath -Parent)
 
     $r += [pscustomobject]@{
-        Service          = $serviceName
-        User             = $user
-        Executable        = $exePath
-        Vulnerable        = $vulnerable
-        VulnerableFolder  = $vulnFolder
-        Score             = _score $user $vulnerable
-        FileACL           = ($fileAcl | ConvertTo-Json -Depth 3)
-        FolderACL         = ($folderAcl | ConvertTo-Json -Depth 3)
+        Service         = $serviceName
+        User            = $user
+        Executable      = $exePath
+        Vulnerable      = $vulnerable
+        VulnerableFolder= $vulnFolder
+        WritableByYou   = $vulnerable
+        RiskScore       = _score $user $vulnerable
+
+        PermissionSummary =
+            if($vulnerable){
+                "Writable folder detected: $vulnFolder"
+            }
+            else{
+                "No writable path segments detected"
+            }
     }
 
 }
@@ -145,7 +152,6 @@ $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 
 try {
     $desktop = [Environment]::GetFolderPath("Desktop")
-
     if(!(Test-Path $desktop)){
         $desktop = $PWD.Path
     }
@@ -157,7 +163,15 @@ catch {
 $csvFile = Join-Path $desktop "UnquotedServiceScan_$timestamp.csv"
 
 $r |
-Sort-Object Score -Descending |
+Sort-Object RiskScore -Descending |
+Select-Object Service,
+              User,
+              Executable,
+              Vulnerable,
+              VulnerableFolder,
+              WritableByYou,
+              RiskScore,
+              PermissionSummary |
 Export-Csv -Path $csvFile -NoTypeInformation -Force
 
 Write-Host ""
