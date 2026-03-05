@@ -1,18 +1,7 @@
 <#
-    Deep Task + Process + DLL + Correlation Security Audit (Enhanced)
-    -------------------------------------------------------
-    Features:
-      ✔ Enumerates ALL scheduled tasks (hidden/invalid/orphaned), running or scheduled
-      ✔ Maps running processes ↔ scheduled tasks
-      ✔ Extracts .exe AND .dll from actions, args, and loader binaries
-      ✔ Lists all processes but only outputs those with writable file/folder
-      ✔ Service executable audit
-      ✔ Autorun executable audit
-      ✔ Orphaned task file detection
-      ✔ Computes abuse scores
-      ✔ Outputs file/folder permissions and highlights write/modify/full access
-      ✔ Globally enumerates all .exe and .dll in filesystem (parallel)
-      ✔ Exports CSV + JSON
+Deep Task + Process + DLL + Correlation Security Tool
+---------------------------------------------
+Author: 0xTr4c3
 #>
 
 param(
@@ -425,3 +414,4 @@ if ($ExportJson) {
 $results.ToArray() |
     Sort-Object AbuseScore -Descending |
     Format-Table Source, Name, Execute, FileWritable, FolderWritable, User, CorrelatedTasks, AbuseScore -AutoSize
+
