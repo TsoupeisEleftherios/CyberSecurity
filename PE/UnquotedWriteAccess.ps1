@@ -13,35 +13,36 @@ Author: Security Audit Script
 #>
 
 param(
-    [switch]$VerboseMode,
-    [string]$ExportCsv = ""
+    [switch]$xv,
+    [string]$csv=""
 )
 
-function V($m){
-    if($VerboseMode){ Write-Host "[+] $m" -ForegroundColor Cyan }
+function _l($m){ if($xv){ Write-Host ("[+]"+$m) -F Cyan } }
+
+function _e($s){
+    if(!$s){ return $null }
+    return [Environment]::ExpandEnvironmentVariables($s)
 }
 
-function Expand-Path($p){
-    if(!$p){ return $null }
-    return [Environment]::ExpandEnvironmentVariables($p)
-}
+function _acl($p){
 
-function Test-DirectoryWritable($Path){
+    if(!(Test-Path $p)){ return $false }
 
     try{
-        $acl = Get-Acl $Path
-        $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
-        foreach($ace in $acl.Access){
+        $a = Get-Acl -LiteralPath $p
+        $u = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
-            if($ace.AccessControlType -ne "Allow"){ continue }
+        foreach($i in $a.Access){
 
-            if($ace.FileSystemRights -match "Write|Modify|FullControl"){
+            if($i.AccessControlType -ne "Allow"){ continue }
+
+            if($i.FileSystemRights.ToString() -match "Write|Modify|Full"){
 
                 if(
-                    $ace.IdentityReference -match "Users" -or
-                    $ace.IdentityReference -match "Everyone" -or
-                    $ace.IdentityReference -match $user
+                    $i.IdentityReference -match "Users" -or
+                    $i.IdentityReference -match "Everyone" -or
+                    $i.IdentityReference.Value -eq $u
                 ){
                     return $true
                 }
@@ -53,96 +54,98 @@ function Test-DirectoryWritable($Path){
     return $false
 }
 
-function Get-AbuseScore($svcUser,$writable){
-
-    $score = 0
-
-    if($svcUser -match "SYSTEM"){ $score += 50 }
-    if($svcUser -match "LocalSystem"){ $score += 50 }
-    if($writable){ $score += 40 }
-
-    return $score
+function _dir($p){
+    try{
+        return _acl (Split-Path $p -Parent)
+    }catch{
+        return $false
+    }
 }
 
-$results = @()
+function _score($u,$w){
 
-V "Scanning services..."
+    $s = 0
 
-Get-CimInstance Win32_Service | ForEach-Object {
+    if($u -match "SYSTEM"){ $s += 50 }
+    elseif($u -match "LocalSystem"){ $s += 50 }
+    elseif($u -match "Admin"){ $s += 40 }
 
-    $serviceName = $_.Name
-    $startName   = $_.StartName
-    $rawPath     = $_.PathName
+    if($w){ $s += 40 }
 
-    if(!$rawPath){ return }
+    return $s
+}
 
-    # Remove quotes
-    $cleanPath = $rawPath -replace '"',''
+$r = @()
 
-    # Check if path is unquoted
-    $isQuoted = ($rawPath -match '^"')
+# ===============================
+# Scan Services
+# ===============================
 
-    # We only care if:
-    # - Elevated service
-    # - Path contains spaces
-    # - Not quoted
-    if(
-        $startName -notmatch "LocalSystem|SYSTEM" -and
-        $startName -notmatch "Admin"
-    ){
-        return
-    }
+_l "svc"
 
-    if($isQuoted){ return }
+Get-CimInstance Win32_Service -EA 0 | ForEach-Object{
 
-    if($cleanPath -notmatch "\s"){ return }
+    $u = $_.StartName
+    $p = $_.PathName
 
-    # Split to detect directory chain
-    $parts = $cleanPath.Split(" ")
+    if(!$p){ return }
 
-    $potentialDirs = @()
+    $clean = ($p -replace '"','')
+    $clean = _e ($clean.Split(" ")[0])
 
-    # Build incremental path checks
-    $accumulator = ""
-    foreach($p in $cleanPath.Split("\")){
+    if($u -notmatch "SYSTEM|LocalSystem|Admin"){ return }
 
-        $accumulator += "$p\"
+    if($p -match '^"'){ return }
 
-        if(Test-Path $accumulator){
-            $potentialDirs += $accumulator
+    if($clean -notmatch "\s"){ return }
+    if(!(Test-Path $clean)){ return }
+
+    # Build path chain
+    $parts = $clean.Split("\")
+    $acc = ""
+    $dirs = @()
+
+    foreach($x in $parts){
+
+        $acc += "$x\"
+
+        if(Test-Path $acc){
+            $dirs += $acc
         }
     }
 
-    $writable = $false
+    $hit = $false
 
-    foreach($dir in $potentialDirs){
+    foreach($d in $dirs){
 
-        if(Test-DirectoryWritable $dir){
-            $writable = $true
+        if(_acl $d){
+            $hit = $true
             break
         }
     }
 
-    if(!$writable){ return }
+    if(!$hit){ return }
 
-    $results += [PSCustomObject]@{
+    $r += [pscustomobject]@{
 
-        Source="UnquotedServicePath"
-        Service=$serviceName
-        User=$startName
-        RawPath=$rawPath
-        CleanPath=$cleanPath
-        WritablePath=$writable
-        AbuseScore=Get-AbuseScore $startName $writable
+        A="UnquotedSvc"
+        B=$_.Name
+        C=$clean
+        D=$u
+        E=$hit
+        S=_score $u $hit
     }
 
 }
 
-$results = $results | Sort-Object AbuseScore -Descending
+# ===============================
+# Sort + Output
+# ===============================
 
-$results | Format-Table -AutoSize
+$r = $r | Sort-Object S -Descending
 
-if($ExportCsv){
-    $results | Export-Csv $ExportCsv -NoTypeInformation
-    Write-Host "CSV Exported -> $ExportCsv"
+$r | Format-Table -AutoSize
+
+if($csv){
+    $r | Export-Csv $csv -NoTypeInformation
 }
