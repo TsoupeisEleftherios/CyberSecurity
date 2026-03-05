@@ -1,10 +1,6 @@
 <#
 Unquoted Service Path Finder - Full Corrected Version
 ---------------------------------------------
-Scans ALL services
-Detects unquoted path vulnerability
-Shows permissions (what YOU can write)
-Exports CSV to Desktop automatically
 Author: 0xTr4c3
 #>
 
