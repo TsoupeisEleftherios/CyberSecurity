@@ -1,56 +1,56 @@
 <#
-Unquoted Service Path Finder
+Unquoted Service Path Finder - Full Corrected Version
 ---------------------------------------------
+Scans ALL services
+Detects unquoted path vulnerability
+Shows permissions (what YOU can write)
+Exports CSV to Desktop automatically
 Author: 0xTr4c3
 #>
 
 param(
-    [switch]$xv,
-    [string]$csv=""
+    [switch]$xv
 )
 
-function _l($m){ if($xv){ Write-Host ("[+]"+$m) -F Cyan } }
+function _l($m){ if($xv){ Write-Host "[+] $m" -ForegroundColor Cyan } }
 
 function _e($s){
     if(!$s){ return $null }
     return [Environment]::ExpandEnvironmentVariables($s)
 }
 
-function _acl($p){
+function Get-Permissions($Path){
 
-    if(!(Test-Path $p)){ return $false }
+    if(!(Test-Path $Path)){ return $null }
 
     try{
+        $acl = Get-Acl -LiteralPath $Path
+        $me  = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
-        $a = Get-Acl -LiteralPath $p
-        $u = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+        $perms = @()
 
-        foreach($i in $a.Access){
+        foreach($ace in $acl.Access){
 
-            if($i.AccessControlType -ne "Allow"){ continue }
+            if($ace.AccessControlType -ne "Allow"){ continue }
 
-            if($i.FileSystemRights.ToString() -match "Write|Modify|Full"){
+            $rights = $ace.FileSystemRights.ToString()
+            $writable = $rights -match "Write|Modify|Full"
 
-                if(
-                    $i.IdentityReference -match "Users" -or
-                    $i.IdentityReference -match "Everyone" -or
-                    $i.IdentityReference.Value -eq $u
-                ){
-                    return $true
-                }
+            $isMine =
+                $ace.IdentityReference.Value -eq $me -or
+                $ace.IdentityReference.Value -match "Users|Everyone|Authenticated"
+
+            $perms += [pscustomobject]@{
+                Identity = $ace.IdentityReference.Value
+                Rights   = $rights
+                Writable = ($writable -and $isMine)
             }
         }
 
-    }catch{}
-
-    return $false
-}
-
-function _dir($p){
-    try{
-        return _acl (Split-Path $p -Parent)
-    }catch{
-        return $false
+        return $perms
+    }
+    catch{
+        return $null
     }
 }
 
@@ -69,75 +69,103 @@ function _score($u,$w){
 
 $r = @()
 
-# ===============================
-# Scan Services
-# ===============================
+_l "Scanning services..."
 
-_l "svc"
+Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | ForEach-Object {
 
-Get-CimInstance Win32_Service -EA 0 | ForEach-Object{
+    $serviceName = $_.Name
+    $user        = $_.StartName
+    $rawPath     = $_.PathName
 
-    $u = $_.StartName
-    $p = $_.PathName
+    if(!$rawPath){ return }
 
-    if(!$p){ return }
+    # Remove quotes + expand env variables
+    $expanded = _e ($rawPath -replace '"','')
 
-    $clean = ($p -replace '"','')
-    $clean = _e ($clean.Split(" ")[0])
+    # Extract executable part only
+    $exePath = $expanded.Split(" ")[0]
 
-    if($u -notmatch "SYSTEM|LocalSystem|Admin"){ return }
+    if(!(Test-Path $exePath)){ return }
 
-    if($p -match '^"'){ return }
+    # -------------------------------
+    # Build folder chain
+    # -------------------------------
 
-    if($clean -notmatch "\s"){ return }
-    if(!(Test-Path $clean)){ return }
+    $parts = $exePath.Split("\")
+    $acc   = ""
+    $dirs  = @()
 
-    # Build path chain
-    $parts = $clean.Split("\")
-    $acc = ""
-    $dirs = @()
+    foreach($p in $parts){
 
-    foreach($x in $parts){
-
-        $acc += "$x\"
+        $acc += "$p\"
 
         if(Test-Path $acc){
             $dirs += $acc
         }
     }
 
-    $hit = $false
+    $vulnerable = $false
+    $vulnFolder = ""
 
     foreach($d in $dirs){
 
-        if(_acl $d){
-            $hit = $true
-            break
+        $aclCheck = Get-Permissions $d
+
+        if($aclCheck){
+
+            foreach($perm in $aclCheck){
+                if($perm.Writable){
+                    $vulnerable = $true
+                    $vulnFolder = $d
+                    break
+                }
+            }
         }
+
+        if($vulnerable){ break }
     }
 
-    if(!$hit){ return }
+    $fileAcl  = Get-Permissions $exePath
+    $folderAcl = Get-Permissions (Split-Path $exePath -Parent)
 
     $r += [pscustomobject]@{
-
-        A="UnquotedSvc"
-        B=$_.Name
-        C=$clean
-        D=$u
-        E=$hit
-        S=_score $u $hit
+        Service          = $serviceName
+        User             = $user
+        Executable        = $exePath
+        Vulnerable        = $vulnerable
+        VulnerableFolder  = $vulnFolder
+        Score             = _score $user $vulnerable
+        FileACL           = ($fileAcl | ConvertTo-Json -Depth 3)
+        FolderACL         = ($folderAcl | ConvertTo-Json -Depth 3)
     }
 
 }
 
-# ===============================
-# Sort + Output
-# ===============================
+# ============================================================
+# EXPORT TO DESKTOP
+# ============================================================
 
-$r = $r | Sort-Object S -Descending
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 
-$r | Format-Table -AutoSize
+try {
+    $desktop = [Environment]::GetFolderPath("Desktop")
 
-if($csv){
-    $r | Export-Csv $csv -NoTypeInformation
+    if(!(Test-Path $desktop)){
+        $desktop = $PWD.Path
+    }
 }
+catch {
+    $desktop = $PWD.Path
+}
+
+$csvFile = Join-Path $desktop "UnquotedServiceScan_$timestamp.csv"
+
+$r |
+Sort-Object Score -Descending |
+Export-Csv -Path $csvFile -NoTypeInformation -Force
+
+Write-Host ""
+Write-Host "====================================="
+Write-Host "Scan Complete"
+Write-Host "Saved To: $csvFile"
+Write-Host "====================================="
