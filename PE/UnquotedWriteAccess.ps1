@@ -1,15 +1,7 @@
 <#
-Unquoted Service Path Auditor
+Unquoted Service Path Finder
 ---------------------------------------------
-
-Detects services that:
-
-1. Run with elevated privileges
-2. Have unquoted executable paths
-3. Contain spaces in the path
-4. AND where the current user can write to a directory in the path
-
-Author: Security Audit Script
+Author: 0xTr4c3
 #>
 
 param(
