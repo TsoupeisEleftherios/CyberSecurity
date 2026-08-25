@@ -17,5 +17,7 @@ if not exist "%OUT%" (
     exit /b 1
 )
 
+"%APP%" "param1" "param2"
+
 endlocal
 exit /b 0
